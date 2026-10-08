@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { en } from '../../i18n'
 import { computeLayout, type Layout } from '../layout'
 import { buildTheme, type PhaserTheme } from '../theme'
 import { createDpad, DPAD_AUTOHIDE_MS, DPAD_BUTTON_PX, DPAD_OPACITY } from './dpad'
@@ -29,7 +28,6 @@ class FakeGO {
   input: { hitArea: { width: number; height: number } } | null = null
   readonly ops: Op[] = []
   readonly handlers = new Map<string, (() => void)[]>()
-  readonly data = new Map<string, unknown>()
 
   constructor(readonly kind: string) {}
 
@@ -64,13 +62,6 @@ class FakeGO {
   }
   emit(event: string): void {
     for (const cb of this.handlers.get(event) ?? []) cb()
-  }
-  setData(key: string, value: unknown): this {
-    this.data.set(key, value)
-    return this
-  }
-  getData(key: string): unknown {
-    return this.data.get(key)
   }
   setFillStyle(color: number, alpha?: number): this {
     this.fillColor = color
@@ -165,7 +156,6 @@ const layout320 = computeLayout(320, 568)
 
 function dpad(s: ReturnType<typeof makeScene>, at: Layout = layout320, dirs: string[] = []) {
   return createDpad(s.scene, theme, at, {
-    getStrings: () => en,
     onDir: (d) => dirs.push(d),
   })
 }
@@ -268,15 +258,6 @@ describe('createDpad — §B8: 70 % opacity, icon nét 2 px', () => {
     for (const icon of s.icons()) {
       expect(icon.allOf('lineStyle').at(-1)?.args[1]).toBe(0x654321)
     }
-  })
-})
-
-describe('createDpad — §B8: nhãn cho screen reader', () => {
-  it('mỗi nút mang nhãn "Move …" lấy từ i18n', () => {
-    const s = makeScene()
-    dpad(s)
-    const labels = s.buttons().map((b) => b.getData('ariaLabel'))
-    expect(labels).toEqual([en.moveUp, en.moveLeft, en.moveRight, en.moveDown])
   })
 })
 

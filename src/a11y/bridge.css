@@ -1,7 +1,20 @@
-/* Tầng a11y: ẩn khỏi mắt nhưng CÒN trong cây accessibility.
+/* Tầng a11y: hai gốc con, ẩn khỏi mắt nhưng CÒN trong cây accessibility.
    KHÔNG dùng display:none hay visibility:hidden — hai thứ đó gỡ luôn khỏi cây
-   a11y và làm cả tầng này vô nghĩa. */
-.a11y-root {
+   a11y và làm cả tầng này vô nghĩa.
+
+   `.a11y-root` (gốc chung) CỐ Ý không có rule nào. Nếu nó cắt — `clip-path`,
+   `overflow: hidden` — thì mọi descendant bị cắt theo, kể cả focus ring của nút
+   thật: người dùng bàn phím mở overlay xong sẽ tab vào một vùng 1 px vô hình và
+   không còn dấu hiệu focus nào trên màn hình (WCAG 2.4.7). Việc ẩn nằm ở TỪNG
+   gốc con, không nằm ở gốc chung. */
+
+/* Gốc A — bàn cờ và hai vùng live. Không phần tử nào bên trong nhận focus nên
+   không bao giờ cần lộ: ẩn vĩnh viễn. */
+.a11y-root-board,
+/* Gốc B — điều khiển thật: D-pad, Settings, ô nhập, và dialog. Ẩn MẶC ĐỊNH, lộ
+   ra khi có focus bên trong (mẫu skip-link). Người dùng chuột không thấy, người
+   dùng bàn phím tab vào là thấy. */
+.a11y-root-controls {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -13,10 +26,46 @@
   border: 0;
 }
 
-/* Nút trong tầng a11y phải có focus ring thấy rõ: người dùng bàn phím định vị
-   bằng outline chứ không bằng vị trí. */
-.a11y-root button:focus-visible,
-.a11y-root [tabindex]:focus-visible {
+/* Có focus bên trong thì thoát hẳn khỏi kiểu ẩn: về lại dòng chảy bình thường,
+   bỏ clip, bỏ overflow. Thiếu `clip-path: none` thì vẫn vô hình dù đã `static`. */
+.a11y-root-controls:focus-within {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
+}
+
+/* §12.3 / §B8: focus ring 3 px. Rule này chỉ có nghĩa NHỜ rule ngay trên — không
+   có nó thì outline bị cha cắt và đây là code chết. */
+.a11y-root-controls :focus-visible {
   outline: 3px solid var(--focus, #1B6EF3);
   outline-offset: 2px;
+}
+
+/* A11Y-07: target ≥ 44×44 px, D-pad ≥ 48 px. Ô nhập gốc nhỏ hơn nhiều
+   (`checkbox` mặc định ~13 px) nên phải tự nâng: nhãn bọc quanh ô nhập giữ
+   chiều cao 44 px, và cả nhãn là vùng bấm. */
+.a11y-root-controls button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.a11y-root-controls .a11y-dpad__btn {
+  min-width: 48px;
+  min-height: 48px;
+}
+.a11y-root-controls .a11y-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.a11y-root-controls input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+}
+.a11y-root-controls input[type="range"],
+.a11y-root-controls select {
+  min-height: 44px;
 }

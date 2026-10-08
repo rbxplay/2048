@@ -1,6 +1,5 @@
 import type Phaser from 'phaser'
 import type { Dir } from '../../game/rules'
-import type { Strings } from '../../i18n'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
 
@@ -44,14 +43,14 @@ export type Dpad = {
   destroy(): void
 }
 
-type Spec = { dir: Dir; labelKey: keyof Strings; dx: number; dy: number }
+type Spec = { dir: Dir; dx: number; dy: number }
 
-/** Thứ tự này cũng là thứ tự nhãn mà tầng a11y đọc lên: lên, trái, phải, xuống. */
+/** Thứ tự dựng nút: lên, trái, phải, xuống — đúng hình chữ thập của §B8. */
 const SPECS: Spec[] = [
-  { dir: 'up', labelKey: 'moveUp', dx: 0, dy: -1 },
-  { dir: 'left', labelKey: 'moveLeft', dx: -1, dy: 0 },
-  { dir: 'right', labelKey: 'moveRight', dx: 1, dy: 0 },
-  { dir: 'down', labelKey: 'moveDown', dx: 0, dy: 1 },
+  { dir: 'up', dx: 0, dy: -1 },
+  { dir: 'left', dx: -1, dy: 0 },
+  { dir: 'right', dx: 1, dy: 0 },
+  { dir: 'down', dx: 0, dy: 1 },
 ]
 
 type Node = {
@@ -99,7 +98,7 @@ export function createDpad(
   scene: Phaser.Scene,
   theme: PhaserTheme,
   layout: Layout,
-  opts: { getStrings: () => Strings; onDir: (dir: Dir) => void },
+  opts: { onDir: (dir: Dir) => void },
 ): Dpad {
   let t = theme
   let l = layout
@@ -124,12 +123,6 @@ export function createDpad(
     for (const [x1, y1, x2, y2] of chevron(node.spec.dir, x, y)) {
       node.icon.lineBetween(x1, y1, x2, y2)
     }
-  }
-
-  /** Nhãn cho screen reader (§B8: "labelled Move up/down/left/right"). */
-  function labelAll(): void {
-    const s = opts.getStrings()
-    for (const n of nodes) n.bg.setData('ariaLabel', s[n.spec.labelKey])
   }
 
   function applyVisibility(visible: boolean): void {
@@ -162,16 +155,12 @@ export function createDpad(
   }
 
   applyVisibility(false)
-  labelAll()
   relayoutAll()
 
   return {
     setVisible(visible) {
       clearTimer()
       applyVisibility(visible)
-      // Nhãn đặt lại ở đây để đổi ngôn ngữ lúc đang chơi vẫn ăn: `getStrings` là
-      // getter, không phải ảnh chụp lúc dựng.
-      labelAll()
     },
     noteDragUsed() {
       if (hidden) return
