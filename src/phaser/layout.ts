@@ -27,33 +27,35 @@ function clamp(v: number, lo: number, hi: number): number {
  * Tính toàn bộ bố cục từ kích thước viewport thật. HÀM THUẦN — không đọc
  * `this.scale`, không chạm Phaser, nên test được không cần engine.
  *
- * Công thức cạnh board lấy từ §B3:139 `clamp(280px, min(92vmin, 560px), 560px)`.
- * Vì `Scale.RESIZE` cho canvas khớp 1:1 với viewport, `width`/`height` ở đây
- * chính là kích thước vật lý của canvas.
+ * Công thức lấy nguyên §B3:139 `clamp(280px, min(92vmin, 560px), 560px)` và
+ * §B3:144 `clamp(48px, 9vmin, 72px)` — `vmin` là cạnh NGẮN của viewport. Vì
+ * `Scale.RESIZE` cho canvas khớp 1:1 với viewport, `width`/`height` ở đây chính
+ * là kích thước vật lý của canvas.
  *
- * §B3 không biết đến HUD và D-pad, nên cạnh board còn bị chặn trên bởi chỗ
- * đứng thật. Hai bất biến phải đúng với MỌI đầu vào hữu hạn:
+ * Hai bất biến phải đúng với MỌI đầu vào hữu hạn:
  *
- *   dpadY >= boardY + boardSide        (D-pad không đè lên board)
- *   boardY >= hudY + hudHeight         (HUD không đè lên board)
+ *   dpadY >= boardY + boardSide        (D-pad không bao giờ đè lên board)
+ *   boardY >= hudY + hudHeight         (HUD không bao giờ đè lên board)
  *
- * Khi viewport thấp đến mức cả sàn 280 px lẫn D-pad không cùng lọt, sàn bị hạ
- * xuống theo chỗ đứng thật: board nhỏ vẫn chơi được, D-pad bị đè thì không.
+ * Cận TRÊN của `boardSide` co lại được theo chỗ đứng thật, nhưng sàn 280 px thì
+ * không: sàn giữ cỡ ô và cỡ chữ đọc được. Ở viewport quá thấp để chứa cả sàn
+ * lẫn D-pad, sàn thắng và D-pad tràn khỏi đáy — đó là hành vi đúng, không phải
+ * nợ kỹ thuật (§B3:154 xử viewport chật bằng "compact HUD, D-pad only", chứ
+ * không bằng cách thu nhỏ bàn cờ). Đè lên board thì tuyệt đối không.
  */
 export function computeLayout(width: number, height: number): Layout {
   const w = Number.isFinite(width) && width > 0 ? width : MIN_BOARD
   const h = Number.isFinite(height) && height > 0 ? height : MIN_BOARD
 
-  const hudHeight = clamp(h * 0.09, HUD_MIN, HUD_MAX)
+  // §B3:144 — 9vmin, tức 0.09 × cạnh NGẮN. Viewport thấp hiếm khi chạm trần.
+  const hudHeight = clamp(0.09 * Math.min(w, h), HUD_MIN, HUD_MAX)
 
-  // §B3:139. `92vmin` = 0.92 × cạnh ngắn của viewport.
+  // §B3:139 nguyên văn. `92vmin` = 0.92 × cạnh ngắn của viewport.
   const bySpec = clamp(Math.min(0.92 * Math.min(w, h), MAX_BOARD), MIN_BOARD, MAX_BOARD)
 
-  // Chỗ đứng thật: trừ HUD, khối D-pad và đệm trên/dưới.
-  const spaceCap = Math.max(0, h - DPAD_BLOCK - hudHeight - PADDING * 2)
-  // Sàn hạ được, nhưng không bao giờ vượt quá chỗ đứng thật hay bề ngang.
-  const floor = Math.min(MIN_BOARD, spaceCap, w)
-  const boardSide = clamp(Math.min(bySpec, spaceCap, w), floor, MAX_BOARD)
+  // Chỗ đứng thật còn lại sau HUD, khối D-pad và đệm — chỉ dùng làm CẬN TRÊN.
+  const spaceCap = h - hudHeight - DPAD_BLOCK - PADDING
+  const boardSide = Math.max(MIN_BOARD, Math.min(bySpec, spaceCap))
 
   const gap = Math.round(boardSide * 0.03)
   const cell = (boardSide - 5 * gap) / 4
