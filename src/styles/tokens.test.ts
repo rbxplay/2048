@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { buildTheme } from '../phaser/theme'
 import {
+  CONTRAST_HAIRLINE_HEX,
   CONTRAST_HEX,
   CONTRAST_TILE_FG_HEX,
   CONTRAST_TILE_HEX,
@@ -110,6 +112,37 @@ describe('tokens.css — theme tương phản cao khớp palette.ts', () => {
       expect(contrast.get(`--t${v}`), `--t${v}`).toBe(CONTRAST_TILE_HEX)
       expect(contrast.get(`--t${v}-fg`), `--t${v}-fg`).toBe(CONTRAST_TILE_FG_HEX)
     }
+  })
+
+  // §B11:303-304 KHÔNG liệt kê hai token hairline, nhưng §B1.5 nói thẳng theme
+  // contrast vẽ tile trắng viền ĐEN **2px**, và §B11 tự rút gọn bằng "…same flip
+  // for all values…" nên nó là bản minh hoạ, không đầy đủ. Thiếu override thì
+  // tầng DOM giữ `rgba(42,28,12,.18)` của theme sáng — viền nâu gần như vô hình
+  // trên nền đen, mà §B4:168 / §B1.4:112 nói chính hairline là thứ tách tile.
+  describe('hairline ở tầng DOM (R9)', () => {
+    const HAIRLINES = ['--hairline-light', '--hairline-dark'] as const
+
+    it.each(HAIRLINES)('khối contrast ghi đè %s', (token) => {
+      const value = contrast.get(token)
+      expect(value, `${token} phải được khai báo trong [data-theme="contrast"]`).toBeDefined()
+      // Phải KHÁC theme sáng, nếu không thì "có khai báo" mà vẫn thừa hưởng màu nâu.
+      expect(value, `${token} vẫn là giá trị của theme sáng`).not.toBe(root.get(token))
+    })
+
+    it.each(HAIRLINES)('%s dày 2px và là màu đen đặc (§B1.5)', (token) => {
+      expect(contrast.get(token)).toMatch(/^2px\s+solid\s+#0{6}$/i)
+    })
+
+    it('màu hairline tầng DOM ở contrast BẰNG màu theme.ts trả cho contrast', () => {
+      const domHex = (contrast.get('--hairline-light') ?? '').match(/#[0-9a-fA-F]{6}/)?.[0]
+      expect(domHex, 'không đọc được mã màu từ --hairline-light').toBeDefined()
+      expect(domHex!.toUpperCase()).toBe(CONTRAST_HAIRLINE_HEX.toUpperCase())
+
+      // Cùng một giá trị ở tầng Phaser — nếu một tầng đổi mà tầng kia không, đỏ.
+      const theme = buildTheme('contrast')
+      const phaserHex = `#${theme.tileHairline(2).toString(16).padStart(6, '0')}`
+      expect(domHex!.toUpperCase()).toBe(phaserHex.toUpperCase())
+    })
   })
 })
 

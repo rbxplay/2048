@@ -109,4 +109,6 @@
   --t4096-fg:#000000;
   --t8192:#FFFFFF;
   --t8192-fg:#000000;
+  --hairline-light:2px solid #000000;
+  --hairline-dark:2px solid #000000;
 }

@@ -150,6 +150,23 @@ export const REDUCED_MOTION_TOKENS: ReadonlyArray<readonly [string, string]> = [
   ['--delay-appear', '0ms'],
 ]
 
+/**
+ * §B1.5 — theme tương phản cao vẽ "white `#FFFFFF` tiles with a 2-px black
+ * border": viền ĐEN ĐẶC và DÀY 2px, khác `1px` nâu/kem của hai theme kia. Nếu
+ * không ghi đè, tầng DOM giữ viền nâu của theme sáng — gần như vô hình trên nền
+ * đen, mà §B4:168 và §B1.4:112 nói chính hairline là thứ tách tile.
+ *
+ * §B11:303-304 không liệt kê hai token này, nhưng nó tự rút gọn bằng "…same flip
+ * for all values…" nên là bản minh hoạ; §B1.5 mới là chỗ nói rõ độ dày. Đây là
+ * phần BỔ SUNG cho §B11, không phải sửa nó.
+ *
+ * Màu dựng từ `CONTRAST_HAIRLINE_HEX` — không chép lại hex.
+ */
+export const CONTRAST_HAIRLINE_TOKENS: ReadonlyArray<readonly [string, string]> = [
+  ['--hairline-light', `2px solid ${CONTRAST_HAIRLINE_HEX}`],
+  ['--hairline-dark', `2px solid ${CONTRAST_HAIRLINE_HEX}`],
+]
+
 /** Giá trị tile > 8192 dùng lại token 8192 (§B11). */
 export const MAX_TILE_TOKEN = 8192
 

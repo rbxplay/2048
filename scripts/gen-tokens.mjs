@@ -65,10 +65,21 @@ function numberList(name) {
 function tokenList(name) {
   // Đóng ở `\n]` chứ không phải `]` trần: mỗi phần tử cũng có `]` của riêng nó.
   const block = blockOf(name, '= [', '\n]')
-  const out = [...block.matchAll(/\[\s*'(--[a-z0-9-]+)'\s*,\s*'([^']*)'\s*\]/g)]
-    .map((m) => [m[1], m[2]])
+  // Giá trị nhận cả `'chuỗi'` lẫn `` `template` ``; dạng template cho phép dựng
+  // giá trị từ hằng màu (xem `resolveHex`) mà không phải chép lại hex ở đây.
+  const out = [...block.matchAll(/\[\s*'(--[a-z0-9-]+)'\s*,\s*(?:'([^']*)'|`([^`]*)`)\s*\]/g)]
+    .map((m) => [m[1], resolveHex(m[2] ?? m[3] ?? '')])
   if (out.length === 0) throw new Error(`${name} không có cặp token/giá trị nào`)
   return out
+}
+
+/**
+ * Thay `${TÊN_HẰNG}` bằng hex của hằng đó trong palette.ts. Nhờ vậy một token
+ * như `--hairline-light` của theme contrast vẫn lấy màu từ
+ * `CONTRAST_HAIRLINE_HEX` — script này không chứa chuỗi màu nào.
+ */
+function resolveHex(value) {
+  return value.replace(/\$\{(\w+)\}/g, (_, name) => hexConst(name))
 }
 
 const kebab = (key) => key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
@@ -85,6 +96,7 @@ const contrastTile = hexConst('CONTRAST_TILE_HEX')
 const contrastTileFg = hexConst('CONTRAST_TILE_FG_HEX')
 const statics = tokenList('STATIC_TOKENS')
 const reducedMotion = tokenList('REDUCED_MOTION_TOKENS')
+const contrastHairlines = tokenList('CONTRAST_HAIRLINE_TOKENS')
 
 const fillOf = (t) => {
   const hex = tileHex.get(String(t))
@@ -120,6 +132,9 @@ const lines = [
     `  --t${t}:${contrastTile};`,
     `  --t${t}-fg:${contrastTileFg};`,
   ]),
+  // §B1.5 — viền đen đặc 2px, dày hơn 1px của hai theme kia. §B11:303-304 không
+  // liệt kê vì nó tự rút gọn bằng "…same flip for all values…".
+  ...contrastHairlines.map(raw),
   '}',
   '',
 ]
