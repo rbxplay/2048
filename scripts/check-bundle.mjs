@@ -22,6 +22,9 @@ const BANNED = [
   ['Page Visibility API', /document\.visibilityState|visibilitychange/],
   ['request ngoài', /(?:fetch|import)\s*\(\s*["'`]https?:\/\/|<link[^>]+href\s*=\s*["']https?:\/\//i],
   ['SDK quảng cáo bên thứ ba', /\b(AdMob|UnityAds|ironSource|AppLovin)\b/],
+  // §5a: mock adapter không được lọt vào bundle production.
+  // Chuỗi này khai báo ở src/platform/mock.ts (DEV_MOCK_MARKER).
+  ['mock adapter lọt vào production bundle', /SPAWNED_BY_DEV_MOCK_ONLY/],
 ]
 
 // SDK YouTube là ngoại lệ hợp lệ duy nhất.
