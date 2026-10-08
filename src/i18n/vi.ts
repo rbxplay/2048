@@ -30,4 +30,6 @@ export const vi: typeof en = {
   moveDown: 'Đi xuống',
   moveLeft: 'Đi sang trái',
   moveRight: 'Đi sang phải',
+  empty: 'trống',
+  boardLabel: 'Bàn cờ 4 nhân 4',
 }

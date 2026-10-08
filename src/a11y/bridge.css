@@ -1,0 +1,22 @@
+/* Tầng a11y: ẩn khỏi mắt nhưng CÒN trong cây accessibility.
+   KHÔNG dùng display:none hay visibility:hidden — hai thứ đó gỡ luôn khỏi cây
+   a11y và làm cả tầng này vô nghĩa. */
+.a11y-root {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Nút trong tầng a11y phải có focus ring thấy rõ: người dùng bàn phím định vị
+   bằng outline chứ không bằng vị trí. */
+.a11y-root button:focus-visible,
+.a11y-root [tabindex]:focus-visible {
+  outline: 3px solid var(--focus, #1B6EF3);
+  outline-offset: 2px;
+}

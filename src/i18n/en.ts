@@ -35,4 +35,6 @@ export const en = {
   moveDown: 'Move down',
   moveLeft: 'Move left',
   moveRight: 'Move right',
+  empty: 'empty',
+  boardLabel: 'Board, 4 by 4',
 }

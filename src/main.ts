@@ -2,7 +2,8 @@
 // vòng đời thật nằm ở Task 18.
 //
 // CSS được import ở task tạo ra chúng: tokens.css ở Task 9, bridge.css ở Task 14.
-//
+import './a11y/bridge.css'
+
 // Tên biến KHÔNG được là `screen`: trình duyệt đã có global `screen`
 // (window.screen), và `const screen` ở phạm vi module sẽ đụng nó — TS báo
 // TS2451 rồi TS2339 khi truy cập .textContent.
