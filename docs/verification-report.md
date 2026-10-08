@@ -9,7 +9,7 @@ Phạm vi: Task 19. Không sửa mã sản phẩm; mọi lỗi tìm thấy chỉ
   `check-bundle` và `preflight` **exit 1**, **đúng bằng baseline đã khai trong spec** (không lệch).
 - Bundle: `dist/index.html` 1 426 044 byte, **gzip -9 = 370 503 byte (361,8 KiB)**, giới hạn 614 400 → **đạt NFR-01**.
 - Request ngoài: chỉ `www.youtube.com` (SDK). Không font, ảnh, analytics.
-- QA §A13 (14 mục): **ĐẠT 11 · KHÔNG ĐẠT 3 (mục 4, 7, 14) · CHƯA KIỂM 0** (mục 12 chỉ kiểm qua cây a11y, không phải screen reader thật; mục 13 đạt theo thiết kế).
+- QA §A13 (14 mục): **ĐẠT 13 · KHÔNG ĐẠT 1 (mục 14; mục 4 và 7 đã đạt sau sửa D1) · CHƯA KIỂM 0** (mục 12 chỉ kiểm qua cây a11y, không phải screen reader thật; mục 13 đạt theo thiết kế).
 - **Lỗi sản phẩm nghiêm trọng (D1): soft-lock sau khi đóng dialog thắng/thua ở chế độ chuyển động mặc định.**
   Xem mục "Lỗi tìm thấy".
 
@@ -85,10 +85,10 @@ Ván ở bước này chơi 200 nước, chưa tới hết nước; ván chơi �
 | 1 | 2 tile đầu, tỉ lệ 90:10 | **ĐẠT** | Phủ tự động: `src/game/rules.test.ts` — "10 000 lần spawn cho tỉ lệ 2:4 = 90:10 ±1 % (A13 mục 1)" và "đúng 2 tile, giá trị thuộc {2, 4} (FR-02, A13 mục 1)". Không kiểm tay lại. |
 | 2 | merge không double | **ĐẠT** | Phủ tự động: `rules.test.ts` — "2 2 2 2 + trái ⇒ 4 4, KHÔNG ra 8", "4 2 2 + trái ⇒ 4 4 (ô đã merge không merge tiếp)". Không kiểm tay lại. |
 | 3 | no-op không spawn | **ĐẠT** | Phủ tự động: `rules.test.ts` — "moved false ⇒ board giữ nguyên", "hàng đã dồn sát mép trái ⇒ moved false". Quan sát thêm trên trình duyệt: nước `←` vô hiệu ở mục 5 không đổi bàn cờ. |
-| 4 | win ở 2048, keep playing | **KHÔNG ĐẠT** | Tiêm board `[[1024,1024,0,0],…]`, bấm `←`: ra 2048, dialog "Bạn đạt 2048!" và loa báo "Bạn đạt 2048!" (đúng). **Nhưng "Chơi tiếp" (bấm chuột hoặc `Esc`) không cho chơi tiếp** với chuyển động mặc định: dialog trên canvas kẹt ở pha `closing`, mọi phím mũi tên bị bỏ qua. Chỉ khi bật "Giảm chuyển động" thì chơi tiếp được (board di chuyển, 2048 trượt, spawn bình thường). Xem D1. |
+| 4 | win ở 2048, keep playing | **ĐẠT** (kiểm lại sau sửa D1) | Lần đầu KHÔNG ĐẠT do D1. Sau sửa (xem D1), build production, chuyển động mặc định: tiêm board `[[1024,1024,0,0],…]`, `←` ra 2048 và dialog "You made 2048!"; "Keep playing" (chuột thật vào nút canvas), "New game" và ✕ đều đóng dialog sau ~800 ms; phím mũi tên sau đó di chuyển tile bình thường (`↓` đưa 2048 xuống hàng dưới). Dialog không còn kẹt `closing`. |
 | 5 | game over đúng điều kiện | **ĐẠT** (phần phát hiện hết nước) | (a) Tiêm board chỉ còn 1 ô trống, bấm nước cuối: dialog "Hết nước đi" + live region assertive; nước `←` vô hiệu trước đó không làm gì; sau đó `↑` bị bỏ qua. (b) Chơi thật bằng phím từ ván mới tới "Hết nước đi" sau 161 lần bấm (điểm 2 280). **Nhưng "Chơi lại" bị kẹt như mục 4** — ván mới được tạo nhưng input chết (D1). Mục này chỉ chấm điều kiện thua, không chấm đường thoát. |
 | 6 | reload giữ board | **ĐẠT** (có điều kiện, xem D3) | 6 nước, rồi `onPause` giả lập (như YouTube rời trang) → `saveData` được gọi 1 lần; nạp lại với blob đó → board **y hệt** 16 ô. **Điều kiện:** sau 6 nước, **trước** khi pause, `saveData` được gọi **0 lần** (save theo mốc §9.4). Một F5 trần không kèm pause giữa chừng ván ngắn sẽ mất board. |
-| 7 | Esc đóng dialog, KHÔNG chặn mặc định | **KHÔNG ĐẠT** (phần "đóng") / **ĐẠT** (phần "không chặn") | `keydown` `Escape` thật: `defaultPrevented = false` (ghi nhận bằng listener `window`) → **không chặn mặc định, đạt**. Phần DOM của dialog biến mất, `keepPlaying` được đặt. **Nhưng dialog canvas không đóng** (kẹt `closing`) và input chết — cùng gốc D1. Với "Giảm chuyển động" bật: `Esc` đóng đúng và ván chơi tiếp. Do tiêu chí là "đóng dialog", ghi KHÔNG ĐẠT. |
+| 7 | Esc đóng dialog, KHÔNG chặn mặc định | **ĐẠT** (kiểm lại sau sửa D1) | `Escape` thật: `defaultPrevented = false` (đo lần đầu, không đổi) → không chặn mặc định. Sau sửa D1, `Esc` trên dialog thắng đóng dialog canvas và input chạy lại (tile di chuyển) với chuyển động mặc định. Esc đóng Settings cũng cho input chạy lại. |
 | 8 | audio tắt khi YouTube mute | **ĐẠT** | Qua ytgame giả (không phải `__mock`, xem D2): 4 nước → 12 lần `OscillatorNode.start`; sau `onAudioEnabledChange(false)` 4 nước → **0**; bật lại → 12. |
 | 9 | pause/resume | **ĐẠT** | Qua ytgame giả: `onPause` → D-pad (DOM) bị ẩn, `saveData` gọi 1 lần, 2 phím mũi tên khi pause **không đổi** board và **0** âm thanh; `onResume` → phím hoạt động trở lại. |
 | 10 | resize giữa lúc tween | **ĐẠT** (giới hạn) | Bấm phím rồi đổi viewport liên tiếp 360×640 → 900×500 → 520×800 → 300×700 → 360×640 khi tween còn chạy: board vẽ lại đúng ô, không tile mồ côi, không lỗi console. Hạn chế: không bắt được khung hình giữa tween. Cùng cơ chế `tweens.killAll()` gây D1, nên resize lúc dialog đang mờ cũng có khả năng làm kẹt dialog (chưa kiểm). |
@@ -111,7 +111,7 @@ mắt trong ảnh, nhưng chênh lệch nhỏ nhất của thang.)
 
 ## 7. Lỗi tìm thấy (không sửa — chờ quyết định)
 
-### D1 — Soft-lock sau khi đóng dialog thắng/thua (nghiêm trọng, mất khả năng chơi)
+### D1 — Soft-lock sau khi đóng dialog thắng/thua (nghiêm trọng, mất khả năng chơi) — ĐÃ SỬA
 
 - **Điều kiện:** chuyển động mặc định (cài đặt "Giảm chuyển động" tắt, `prefers-reduced-motion` không bật). Build production và dev đều bị.
 - **Tái hiện (đã chạy 4 lần, cả hai build):**
@@ -128,6 +128,15 @@ mắt trong ảnh, nhưng chênh lệch nhỏ nhất của thang.)
 - **Vì sao test không bắt được:** các test của `dialogs`/`actions` dùng scene giả; không test nào chạy tween thật cùng `renderBoard`.
 - **Mức độ:** chặn đường thắng→chơi tiếp và thua→chơi lại — hai luồng cốt lõi (US-05). Người chơi buộc phải tải lại trang.
 - **Gợi ý hướng sửa (không thực hiện):** để Board chỉ kill tween của chính nó (theo tập target) thay vì `killAll()`, hoặc đóng dialog sau `renderBoard`.
+- **Đã sửa:** `BoardScene.#abortTweens()` không còn gọi `tweens.killAll()`; nó chỉ `killTweensOf` container và nền của
+  các tile trong pool (đích của mọi tween Board), rồi vẫn giải phóng `#absorbing`. Dialog và settings sống cùng scene nên
+  tween mờ dần của chúng không còn bị giết, `finishClose()` chạy đúng và `phase` về `'closed'`. Mã: commit sửa D1
+  (`git log --grep D1`). Test: `src/phaser/boardScene.test.ts` (3 test, 2 đỏ trước khi sửa).
+- **Kiểm lại trên trình duyệt thật (build production, chuyển động mặc định, ytgame giả):** Keep playing, New game, ✕, Esc trên
+  dialog thắng; Retry trên dialog thua; mở/đóng Settings bằng Esc; đổi theme (canvas) rồi đóng; resize giữa lúc dialog
+  thắng và Settings đang mờ dần — tất cả: input chạy lại sau ~1 s.
+- **Settings** dùng cùng mẫu `'closing'` nên cùng lộ ra (resize khi card mờ dần chạm `#abortTweens`); cùng gốc, đã được sửa bởi thay đổi trên.
+
 
 ### D2 — `window.__mock` không bao giờ được cài
 

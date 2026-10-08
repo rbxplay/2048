@@ -173,7 +173,7 @@ export class BoardScene extends Phaser.Scene {
    */
   playOutcome(outcome: MoveOutcome): void {
     if (!outcome.moved) return
-    // `killAll` huỷ tween TẠI CHỖ và không chạy `onComplete`, nên phải chốt trạng
+    // `killTweensOf` huỷ tween TẠI CHỖ và không chạy `onComplete`, nên phải chốt trạng
     // thái cuối: không thì tile đang trượt dở nằm lơ lửng giữa hai ô (nước này nó
     // bị chặn nên không có slide nào đặt lại), tile đang spawn kẹt ở scale 0, tile
     // đang pop kẹt ở 1.18. Chốt TRƯỚC vòng `slides` để nước mới còn khởi hành từ
@@ -378,15 +378,23 @@ export class BoardScene extends Phaser.Scene {
   }
 
   /**
-   * Huỷ mọi tween đang chạy và dọn tile mồ côi.
+   * Huỷ tween CỦA BÀN CỜ (slide / pop / spawn / hút) và dọn tile mồ côi.
    *
-   * `tweens.killAll()` KHÔNG chạy `onComplete`, nên tile đang hút vào ô merge
-   * sẽ nằm lại trong pool vĩnh viễn — nó không có trong board nào cả, mà cũng
-   * chẳng còn tween nào để tự dọn. Gộp hai việc vào một chỗ để không call-site
-   * nào quên vế thứ hai.
+   * Chỉ nhắm vào container + nền của tile mình: dialog và settings sống cùng
+   * scene này và mờ dần bằng `scene.tweens`, mà `killAll` giết luôn cả
+   * chúng — không chạy `onComplete` nên `phase` kẹt ở `'closing'` và
+   * `overlayCoversScreen` chặn input vĩnh viễn (D1). Mọi tween của Board đều
+   * nhắm vào hai loại đích này, không có đường nào khác.
+   *
+   * `killTweensOf` cũng KHÔNG chạy `onComplete`, nên tile đang hút vào ô merge
+   * vẫn nằm lại trong pool — nó không có trong board nào cả, mà cũng chẳng còn
+   * tween nào để tự dọn. Gộp hai việc vào một chỗ để không call-site nào quên
+   * vế thứ hai.
    */
   #abortTweens(): void {
-    this.tweens.killAll()
+    const targets: object[] = []
+    for (const node of this.#nodes.values()) targets.push(node.container, node.background)
+    if (targets.length > 0) this.tweens.killTweensOf(targets)
     for (const id of [...this.#absorbing]) this.#release(id)
   }
 
