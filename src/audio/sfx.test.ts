@@ -31,6 +31,11 @@ type NoteLog = {
   peakToAt: number | null
   start: number | null
   stop: number | null
+  /** Lúc bị `cancelScheduledValues` — dấu vết của một lần CẮT TIẾNG giữa chừng. */
+  cancelledAt: number | null
+  /** Giá trị gain bị ép tới khi cắt (kỳ vọng 0) và thời điểm cắt. */
+  cutTo: number | null
+  cutAt: number | null
 }
 
 function blank(): NoteLog {
@@ -46,6 +51,9 @@ function blank(): NoteLog {
     peakToAt: null,
     start: null,
     stop: null,
+    cancelledAt: null,
+    cutTo: null,
+    cutAt: null,
   }
 }
 
@@ -97,22 +105,36 @@ function fakeContext() {
     }),
     // `voice()` luôn dựng oscillator TRƯỚC gain, nên gain gắn vào bản ghi vừa
     // tạo — đúng cặp osc/gain của cùng một nốt.
-    createGain: vi.fn(() => ({
-      gain: {
-        value: 0,
-        setValueAtTime: vi.fn((v: number, t: number) => {
-          const rec = log[log.length - 1]!
-          rec.peak = v
-          rec.peakAt = t
-        }),
-        exponentialRampToValueAtTime: vi.fn((v: number, t: number) => {
-          const rec = log[log.length - 1]!
-          rec.peakTo = v
-          rec.peakToAt = t
-        }),
-      },
-      connect: vi.fn(),
-    })),
+    // `voice()` luôn dựng oscillator TRƯỚC gain, nên gain thuộc về bản ghi vừa
+    // tạo. Chốt bản ghi đó vào closure ngay lúc dựng: các lời gọi CẮT TIẾNG xảy
+    // ra sau khi mọi nốt đã dựng xong, nên tra `log[log.length - 1]` lúc đó sẽ
+    // ghi nhầm vào nốt cuối cùng.
+    createGain: vi.fn(() => {
+      const rec = log[log.length - 1]!
+      return {
+        gain: {
+          value: 0,
+          setValueAtTime: vi.fn((v: number, t: number) => {
+            rec.peak = v
+            rec.peakAt = t
+          }),
+          exponentialRampToValueAtTime: vi.fn((v: number, t: number) => {
+            rec.peakTo = v
+            rec.peakToAt = t
+          }),
+          // Hai method này chỉ được gọi khi CẮT TIẾNG giữa chừng. Ghi lại để test
+          // phân biệt được "im tiếng thật" với "chỉ đặt cờ chặn âm về sau".
+          cancelScheduledValues: vi.fn((t: number) => {
+            rec.cancelledAt = t
+          }),
+          linearRampToValueAtTime: vi.fn((v: number, t: number) => {
+            rec.cutTo = v
+            rec.cutAt = t
+          }),
+        },
+        connect: vi.fn(),
+      }
+    }),
   }
   return { ctx, log }
 }
@@ -456,5 +478,79 @@ describe('createSfx — unlock (rủi ro R1)', () => {
     expect(() => sfx.unlock()).not.toThrow()
     await vi.waitFor(() => expect(sfx.audioFailures).toBe(1))
     warn.mockRestore()
+  })
+})
+
+/**
+ * R37(iii) — §6: pause/resume CHỈ qua SDK, và khi pause thì phải IM TIẾNG THẬT.
+ *
+ * `setMuted(true)` chỉ đặt một cờ mà `voice()` đọc TRƯỚC khi dựng node: nó chặn
+ * được âm về sau nhưng không đụng tới những nốt đã dựng và đang kêu. Hợp âm
+ * `win` dài 1,2 s và `over` dài 1,0 s, nên một lần `onPause` rơi vào giữa hợp âm
+ * sẽ để tiếng vang tiếp sau khi đã pause — đúng thứ §6 cấm.
+ */
+describe('R37 — mute phải cắt cả nốt ĐANG kêu', () => {
+  it('setMuted(true) đưa mọi gain đang kêu về 0 ngay lập tức', () => {
+    const { ctx, log } = fakeContext()
+    const sfx = createSfx({ contextFactory: asContext(ctx) })
+    sfx.play('win')
+    expect(log).toHaveLength(3)
+
+    sfx.setMuted(true)
+
+    for (const note of log) {
+      expect(note.cancelledAt, 'phải huỷ envelope đã hẹn giờ').toBe(0)
+      expect(note.cutTo, 'gain phải về 0').toBe(0)
+      // Cắt NGAY, không phải hẹn tắt dần ở cuối nốt: trễ tối đa 20 ms để không
+      // tạo tiếng "tạch" khi cắt.
+      expect(note.cutAt).toBeGreaterThanOrEqual(0)
+      expect(note.cutAt!).toBeLessThanOrEqual(0.02)
+    }
+  })
+
+  it('cắt ở đúng thời điểm hiện tại của context, không phải mốc 0 cứng', () => {
+    const { ctx, log } = fakeContext()
+    ctx.currentTime = 12.5
+    const sfx = createSfx({ contextFactory: asContext(ctx) })
+    sfx.play('over')
+    sfx.setMuted(true)
+    for (const note of log) {
+      expect(note.cancelledAt).toBe(12.5)
+      expect(note.cutAt! >= 12.5 && note.cutAt! <= 12.52).toBe(true)
+    }
+  })
+
+  it('onResume: setMuted(false) không hồi sinh nốt đã cắt, và âm MỚI kêu lại bình thường', () => {
+    const { ctx, log } = fakeContext()
+    const sfx = createSfx({ contextFactory: asContext(ctx) })
+    sfx.play('win')
+    sfx.setMuted(true)
+    const before = log.length
+
+    sfx.setMuted(false)
+    // Không dựng thêm node nào cho nốt cũ.
+    expect(log).toHaveLength(before)
+
+    sfx.play('move')
+    const fresh = log[log.length - 1]!
+    expect(fresh.peak, 'âm mới phải có gain thật, không bị kẹt ở 0').toBeGreaterThan(0)
+    expect(fresh.cutTo, 'âm mới không được cắt').toBeNull()
+  })
+
+  it('A9 MUST giữ nguyên: đang mute thì KHÔNG dựng node nào', () => {
+    const { ctx, log } = fakeContext()
+    const sfx = createSfx({ contextFactory: asContext(ctx) })
+    sfx.setMuted(true)
+    sfx.play('move')
+    sfx.playMerge(4)
+    expect(log).toHaveLength(0)
+  })
+
+  it('volume 0 cũng là im tiếng: không dựng node (đường cũ không được vỡ)', () => {
+    const { ctx, log } = fakeContext()
+    const sfx = createSfx({ contextFactory: asContext(ctx) })
+    sfx.setVolume(0)
+    sfx.play('move')
+    expect(log).toHaveLength(0)
   })
 })

@@ -17,6 +17,14 @@ export const MERGE_BASE_HZ = 220
 const MAX_SEMITONES = 12
 
 /**
+ * Thời gian tắt khi CẮT TIẾNG giữa chừng, giây.
+ *
+ * 20 ms là đủ để không nghe tiếng "tạch" do gain nhảy bậc, mà vẫn là im tiếng
+ * ngay ở thang thời gian tai người.
+ */
+const CUT_FADE_SECONDS = 0.02
+
+/**
  * Tần số cho `sfx.merge` theo giá trị tile.
  *
  * Mỗi lần gấp đôi giá trị tile thì lên 1 semitone (B7), cap ở +12 để tile
@@ -97,6 +105,10 @@ export type Sfx = {
    */
   unlock(): void
   setVolume(volume: number): void
+  /**
+   * Tắt/bật tiếng. Tắt thì **im ngay**: chặn âm về sau *và* cắt những nốt đang
+   * kêu (hợp âm `win` dài 1,2 s). `onPause` dựa vào vế thứ hai để thoả §6.
+   */
   setMuted(muted: boolean): void
   play(name: SfxName): void
   playMerge(value: number): void
@@ -129,6 +141,15 @@ export function createSfx(opts: {
   let muted = false
   let failures = 0
   let warned = false
+
+  /**
+   * Gain của những nốt ĐANG kêu.
+   *
+   * Phải giữ tham chiếu thì `setMuted(true)` mới cắt được tiếng đang vang: mỗi
+   * nốt tự nối thẳng vào `destination` rồi không ai nhớ tới nó nữa. Nốt kết thúc
+   * thì tự rút khỏi tập, nên tập này không phình theo độ dài ván đấu.
+   */
+  const live = new Set<GainNode>
 
   /**
    * Ghi nhận một lỗi audio đã bị nuốt, rồi cảnh báo MỘT lần cho mỗi instance.
@@ -192,6 +213,11 @@ export function createSfx(opts: {
       gain.gain.exponentialRampToValueAtTime(0.0001, to)
       osc.connect(gain)
       gain.connect(audio.destination)
+      live.add(gain)
+      // Nốt kết thúc là hết "đang kêu" — không cần ai gọi dọn.
+      osc.onended = () => {
+        live.delete(gain)
+      }
       osc.start(from)
       osc.stop(to + 0.02)
     } catch {
@@ -235,11 +261,33 @@ export function createSfx(opts: {
     volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0
   }
 
+  /**
+   * Bật/tắt tiếng. Tắt nghĩa là **im ngay**, không chỉ "chặn âm về sau".
+   *
+   * Vì sao phải cắt cả nốt đang kêu: `onPause` gọi hàm này để thoả §6 (pause chỉ
+   * qua SDK onPause), mà hợp âm `win` dài 1,2 s còn `over` dài 1,0 s — chỉ đặt cờ
+   * thì tiếng vẫn vang tiếp sau khi đã pause. Cùng lý do, đây cũng là cách tôn
+   * trọng A9 khi YouTube mute giữa chừng.
+   */
   function setMuted(m: boolean): void {
     muted = m
+    if (!m) return
+    const audio = ctx
+    if (audio === null) return
+    for (const gain of live) {
+      try {
+        const now = audio.currentTime
+        // Huỷ envelope đã hẹn giờ trước, nếu không nó sẽ kéo gain trở lại.
+        gain.gain.cancelScheduledValues(now)
+        gain.gain.linearRampToValueAtTime(0, now + CUT_FADE_SECONDS)
+      } catch {
+        swallow()
+      }
+    }
   }
 
   function destroy(): void {
+    live.clear()
     try {
       // `.catch` giống đường resume ở `unlock`: `close()` trả Promise, mà một
       // rejection không ai bắt sẽ thành lỗi console — audio không được gây ồn.
