@@ -861,25 +861,44 @@ zoom 200 % và target ≥ 44 px đều đạt mà không phải tự dựng lạ
 >    `aria-hidden`. Focus ring `3px solid var(--focus)`, lệch 2 px (DesignSystem §B8) vẽ quanh nút
 >    DOM, tức quanh nút canvas đang nhìn thấy.
 > 4. **`pointer-events: none` trên mọi điều khiển DOM.** Chuột và cảm ứng đi xuyên xuống canvas, nên
->    một cú bấm chỉ có một nơi nhận (ô bấm của canvas); Enter / Space và `element.click()` của screen
->    reader không qua hit-test nên chỉ tới nút DOM. Để cả hai cùng nhận là hai action cho một lần bấm.
+>    một cú bấm chỉ có một nơi nhận (ô bấm của canvas); Enter / Space không qua hit-test nên chỉ tới
+>    nút DOM. Để cả hai cùng nhận là hai action cho một lần bấm. Với trình đọc màn hình: kích hoạt
+>    bằng `element.click()` cũng chỉ tới nút DOM — điều này **suy từ mã và đo bằng `click()` tổng
+>    hợp trong Chromium, CHƯA kiểm trên VoiceOver / TalkBack thật**. (Trình đọc nào kích hoạt bằng
+>    một cú chạm tổng hợp tại tâm phần tử thì cú chạm đó xuyên xuống đúng nút canvas bên dưới —
+>    cũng là suy luận, chưa đo.)
 > 5. **Ring ở mép màn hình.** Ring vươn ra ngoài nút 5 px, mà nút "xuống" của D-pad dán sát đáy
 >    viewport ở mọi bố cục xếp dọc. Hộp DOM lùi ĐÚNG cạnh chạm mép vào tối đa 5 px để ring đủ bốn
 >    cạnh (`fitRing`); ba cạnh kia trùng nút canvas. Vùng bấm của chuột / cảm ứng là ô bấm canvas
 >    48 px, không đổi. Vì vậy CSS không còn `min-width` / `min-height`: cỡ ≥ 44 / ≥ 48 px đến từ nút
 >    canvas và được kiểm ở test của view và của `placement.ts`.
-> 6. **Ô nhập cài đặt.** Bảng Settings MỞ: `input[type=range]` trên rãnh slider (rãnh đang vẽ × 44
->    px), hai checkbox trên hai toggle, `<select>` trên nút theme (canvas chỉ có MỘT nút xoay vòng ba
->    theme và hiện tên theme hiện tại — đúng giá trị `<select>` đang giữ; mũi tên lên/xuống đổi
->    theme, không dựng ba nút mới). Bảng ĐÓNG: canvas không vẽ bốn điều khiển đó ở đâu cả, nhưng
->    theo bảng trên chúng vẫn phải ở trong cây accessibility và thứ tự tab — khi đó chúng đứng trên
->    **bánh răng**, nên ring hiện quanh bánh răng thay vì rơi vào chỗ vô hình. `Settings.sync` chiếu
->    thay đổi từ ô nhập DOM lên hình vẽ (con trượt, dấu tick, nhãn theme) khi bảng đang mở.
-> 7. Không đổi: bẫy focus và trả focus của dialog, `inert` cho nền, `Esc` không `preventDefault()`,
+> 6. **Bảng Settings ở tầng DOM đi theo bảng của canvas** (`bridge.setSettingsOpen`, gọi qua
+>    `src/app/settings-panel.ts`). Bốn ô nhập và một nút "Đóng" nằm chung một `role="group"` tên
+>    "Cài đặt".
+>    - Bảng MỞ: `input[type=range]` trên rãnh slider (rãnh đang vẽ × 44 px), hai checkbox trên hai
+>      toggle, `<select>` trên nút theme (canvas chỉ có MỘT nút xoay vòng ba theme và hiện tên theme
+>      hiện tại — đúng giá trị `<select>` đang giữ; mũi tên lên/xuống đổi theme, không dựng ba nút
+>      mới), nút "Đóng" DOM trên nút Đóng của canvas và đi cùng đường với nó (người dùng trình đọc
+>      màn hình cảm ứng không có `Esc`). Focus chuyển vào điều khiển đầu của bảng; nền (bàn cờ,
+>      D-pad, nút Cài đặt) bị `inert` bằng cùng một hàm với dialog. Thứ tự Tab: Âm thanh → Rung →
+>      Giảm chuyển động → Giao diện → Đóng. `Settings.sync` chiếu thay đổi từ ô nhập DOM lên hình vẽ
+>      (con trượt, dấu tick, nhãn theme).
+>    - Bảng ĐÓNG: canvas không vẽ các điều khiển đó ở đâu cả. Bốn ô nhập **rời thứ tự Tab**
+>      (`tabindex="-1"`) nhưng vẫn ở trong cây accessibility với đủ tên, vai trò, trạng thái, đúng
+>      bảng ở trên; hộp của chúng đậu trên bánh răng. Nút "Đóng" thì `hidden`. Lúc chơi còn 5 điểm
+>      dừng Tab: bốn nút D-pad và nút Cài đặt.
+>    - Đóng bằng bất kỳ đường nào (nút Đóng canvas, nút Đóng DOM, `Esc`): focus đang ở trong bảng
+>      thì về nút Cài đặt NGAY lúc bảng vào `'closing'`, không đợi hết 800 ms mờ dần.
+>    - Mở có MỘT cổng cho cả bánh răng canvas lẫn nút Cài đặt DOM (`settingsMayOpen`): không mở khi
+>      pause, khi overlay còn chiếm màn hình (kể cả `'closing'`), hay khi bảng chưa về `'closed'`.
+> 7. Nút hành động của dialog vẽ từ trên xuống theo ĐÚNG thứ tự `buttonLabels` ("Chơi tiếp" trên,
+>    "Ván mới" dưới) — trước đó vẽ ngược, nên Tab đi từ dưới lên. Nút nhận focus khi dialog mở vẫn
+>    là "Chơi tiếp"; hành động phá huỷ không thành mặc định.
+> 8. Không đổi: bẫy focus và trả focus của dialog, `inert` cho nền, `Esc` không `preventDefault()`,
 >    guard bàn phím cho ô nhập DOM, hai vùng live, vòng đời ba trạng thái của overlay.
 >
 > Dòng "Focus ring" và "Zoom 200 % … DOM a11y không bị cắt" ở §12.3 đọc theo quy tắc này. Giới hạn
-> đã biết: nút ✕ của dialog và nút "Đóng" của Settings chỉ có trên canvas (bàn phím dùng `Esc`); khi
+> đã biết: nút ✕ của dialog chỉ có trên canvas (bàn phím dùng `Esc`); khi
 > D-pad canvas tự ẩn (`dpad: 'auto'` sau cú vuốt, hoặc `'off'`) bốn nút DOM vẫn ở chỗ D-pad, nên
 > ring ôm một ô trống. Số đo trên trình duyệt thật: `docs/verification-report.md` mục 7.
 
