@@ -27,6 +27,8 @@ import {
   overlayForStatus,
   type OverlayPresenter,
 } from './app/overlay'
+import { present, type PresentSinks } from './app/present'
+import { createSaveGate, PLAY_SAVE_MS } from './app/save-gate'
 import {
   applyInput, createSession, keepPlaying, newGame, toSave,
   type SessionState, type Step,
@@ -138,6 +140,16 @@ async function boot(): Promise<void> {
   let gameOvers = 0
   /** Kỷ lục đã gửi `sendScore` lần cuối, để không báo lại cùng một con số. */
   let lastReportedBest = state.best
+  /**
+   * Nền tảng đang pause (§9.5).
+   *
+   * CỐ Ý không dùng `state.status`: `status` là trạng thái VÁN (playing / won /
+   * over) do `app/session.ts` sở hữu và có luật riêng (`applyInput` bỏ qua input
+   * khi khác 'playing'); còn đây là trạng thái VÒNG ĐỜI do host quyết định. Nhét
+   * pause vào `status` là để một cú pause của host ghi đè luật ván — và lúc
+   * resume thì không còn biết trạng thái ván trước đó là gì.
+   */
+  let paused = false
 
   // Điều khiển DOM của §12.1 dựng ngay bây giờ: người dùng bàn phím có đường
   // vào game trước cả khi scene đầu tiên kịp vẽ.
@@ -155,14 +167,31 @@ async function boot(): Promise<void> {
   }
 
   /**
-   * Lưu ở milestone. §9.4: bắt đầu ván · win · game over · pause · mỗi mốc
-   * 1000 điểm. `pause` gọi thẳng `platform.save` vì nó không sinh `Step`.
+   * Cổng chặn nhịp lưu (§9.4 "Debounce ≥ 1 s") — xem `app/save-gate.ts`.
+   *
+   * Đồng hồ ở ĐÂY, không ở `app/session.ts`: module luật ván phải thuần (không
+   * timer, không `Date.now()`). `performance.now()` chứ không `Date.now()` để
+   * cùng thang với `sessionStartedAt` và không nhảy khi đồng hồ hệ thống được
+   * chỉnh.
+   */
+  const saveGate = createSaveGate({
+    save: () => { void platform.save(toSave(state, nowIso())) },
+    now: () => performance.now(),
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: (h) => { clearTimeout(h) },
+  })
+
+  /**
+   * Lưu ở MỐC RỜI RẠC. §9.4: bắt đầu ván · win · game over · pause · mỗi 30 s
+   * chơi · mỗi mốc 1000 điểm.
+   *
+   * Mốc đi thẳng qua `saveNow` (ghi NGAY) chứ không qua cửa sổ debounce: mốc là
+   * sự kiện rời rạc, để nó xếp hàng sau cửa sổ là mất đúng cái khoảnh khắc §9.4
+   * muốn ghi lại. Cửa sổ chỉ dành cho thay đổi LIÊN TỤC (thanh trượt SFX).
    */
   function saveIfNeeded(milestones: readonly string[]): void {
     if (milestones.length === 0) return
-    // Ghi save hỏng không được làm gián đoạn ván (hợp đồng GamePlatform), nên
-    // promise này cố ý không được await trên đường chơi.
-    void platform.save(toSave(state, nowIso()))
+    saveGate.saveNow()
     // `sendScore` chỉ khi kỷ lục THẬT SỰ tăng: báo lại đúng con số cũ ở mỗi
     // milestone là cuộc gọi thừa, mà mỗi cuộc gọi có timeout 2 giây.
     if (state.best > lastReportedBest) {
@@ -174,19 +203,32 @@ async function boot(): Promise<void> {
   // ---------- chiếu state ra hai tầng ----------
 
   /**
-   * Bản DOM và bản canvas đọc từ CÙNG một nguồn: `state` và `step.move`.
+   * Bộ chuyển `PresentSinks` → các view thật. Chỗ DUY NHẤT ánh xạ state sang
+   * canvas và DOM.
    *
-   * Review Focus mục 1 — cao nhất trong danh sách rủi ro review: không nhánh
-   * nào được phép chỉ cập nhật một bên.
+   * `hud`/`scene` còn `null` trong khoảng giữa boot và `create()` của scene
+   * (người dùng bàn phím có đường vào game trước khi canvas vẽ xong), nên mọi
+   * sink phải chịu được null.
+   */
+  const sinks: PresentSinks = {
+    setScore: (score, delta) => { hud?.setScore(score, delta) },
+    setBest: (best) => { hud?.setBest(best) },
+    syncBoard: (board) => { bridge.syncBoard(board) },
+    announceScore: (score, loc) => { bridge.announceScore(score, loc) },
+    playOutcome: (move) => { scene?.playOutcome(move) },
+    renderBoard: (board) => { scene?.renderBoard(board) },
+  }
+
+  /**
+   * Bản DOM và bản canvas đọc từ CÙNG một nguồn — bất biến được GHIM ở
+   * `app/present.ts` (một tham số board duy nhất), không phải bằng việc nhớ viết
+   * đúng hai dòng ở đây.
+   *
+   * Review Focus mục 1 — cao nhất trong danh sách rủi ro review: không nhánh nào
+   * được phép chỉ cập nhật một bên.
    */
   function syncAll(step: Step | null): void {
-    hud?.setScore(state.score, step?.move?.scoreDelta ?? null)
-    hud?.setBest(state.best)
-    bridge.syncBoard(state.board)
-    bridge.announceScore(state.score, locale)
-    if (scene === null) return
-    if (step !== null && step.move !== null) scene.playOutcome(step.move)
-    else scene.renderBoard(state.board)
+    present(sinks, state, step, locale)
   }
 
   /** Mở overlay ở CẢ HAI tầng — xem `app/overlay.ts`. */
@@ -255,12 +297,20 @@ async function boot(): Promise<void> {
     // nó: thiếu dòng này thì kéo thanh SFX trên canvas xong, ô nhập DOM vẫn ghi
     // giá trị cũ, và hai bản lệch nhau.
     bridge.syncControls(state.settings)
-    void platform.save(toSave(state, nowIso()))
+    // Đường LIÊN TỤC duy nhất: `bridge.ts` phát một sự kiện `input` cho MỖI bước
+    // kéo thanh trượt SFX. Ghi thẳng ở đây là mỗi bước một lời gọi SDK, mà SDK bị
+    // rate-limit — nên đi qua cửa sổ ≥ 1 s của `saveGate`.
+    saveGate.saveSoon()
   }
 
   // ---------- input ----------
 
   function onDir(dir: Dir): void {
+    // §9.5 + PRD:452 — pause thì input chết theo D-pad. Cổng này đứng TRƯỚC mọi
+    // thứ khác: vòng lặp đã ngủ nên không có gì để vẽ, mà một nước đi lúc này
+    // còn đổi state sau lưng host đang tạm chiếm màn hình. `sfx.unlock()` cũng
+    // phải nằm sau cổng: pause là lúc âm thanh đã bị cắt.
+    if (paused) return
     sfx.unlock()
 
     // Cổng chặn đặt Ở ĐÂY, theo state — không phải bằng cách gỡ listener.
@@ -308,6 +358,9 @@ async function boot(): Promise<void> {
    * trong DOM (§12.1) và `Esc` đều tới đây qua `OverlayPresenter`.
    */
   function applyAction(action: DialogAction): void {
+    // Pause chặn luôn đường này: nút trong dialog DOM là đường thứ hai vào cùng
+    // logic, và nó vẫn bấm được bằng bàn phím kể cả khi vòng lặp đã ngủ.
+    if (paused) return
     // Đóng ở cả hai tầng trước khi làm gì khác — mở lại sau đó là đường duy
     // nhất không để lại overlay mồ côi.
     closeOverlay()
@@ -423,6 +476,16 @@ async function boot(): Promise<void> {
     // `dpad: 'off'` là cài đặt có thật trong save schema — phải tôn trọng.
     dpad.setVisible(state.settings.dpad !== 'off')
 
+    /**
+     * §9.4: "mỗi 30 s chơi" là một mốc lưu.
+     *
+     * Đồng hồ của SCENE chứ không `setInterval`: nó chạy theo vòng lặp game, nên
+     * `onPause` gọi `game.loop.sleep()` là đồng hồ đứng luôn — đúng nghĩa "30 s
+     * CHƠI", không phải 30 s đồng hồ treo tường. Đặt ở `main.ts` (tầng vòng đời)
+     * chứ không ở `app/session.ts`: module luật ván phải thuần.
+     */
+    sc.time.addEvent({ delay: PLAY_SAVE_MS, loop: true, callback: () => { saveGate.saveNow() } })
+
     // Vẽ board và chiếu DOM từ cùng một nguồn, rồi mới báo sẵn sàng: gọi
     // `gameReady()` sớm hơn là hứa hão với người chơi (§9.2).
     sc.renderBoard(state.board)
@@ -468,23 +531,37 @@ async function boot(): Promise<void> {
   })
 
   platform.onPause(() => {
-    // §9.5: dừng vòng lặp, mute, flush save. Không có hình phạt theo thời gian.
+    // §9.5: dừng vòng lặp, mute, flush save, ẨN D-PAD. Không có hình phạt theo
+    // thời gian. Bốn việc — thiếu việc thứ tư thì D-pad vẫn nằm đó mời gọi bấm
+    // trong khi `onDir` đã bị chặn, tức hai tầng nói hai chuyện khác nhau.
+    paused = true
     game.loop.sleep()
     sfx.setMuted(true)
     // Đóng overlay ở CẢ HAI tầng: chỉ gọi `bridge.closeDialog()` là để lại
     // overlay trên canvas mà không còn nút nào cho bàn phím hay screen reader
     // (Review Focus mục 1).
     closeOverlay()
-    void platform.save(toSave(state, nowIso()))
+    // D-pad ở CẢ HAI tầng: canvas (`views/dpad.ts`) và DOM (`a11y/bridge.ts`).
+    dpad?.setVisible(false)
+    bridge.setDpadVisible(false)
+    // `saveNow` chứ không `saveSoon`: pause là mốc RỜI RẠC của §9.4, phải có mặt
+    // trong save ngay — kể cả khi không có thay đổi liên tục nào đang chờ.
+    saveGate.saveNow()
   })
 
   platform.onResume(() => {
+    paused = false
     game.loop.wake()
     sfx.setMuted(!platform.isAudioEnabled())
     // R1: mỗi lần resume là một lần thử unlock lại (context có thể đã bị treo).
     sfx.unlock()
     // Phiên chơi tính lại từ đây: §A8 cấm quảng cáo trong 30 giây đầu.
     sessionStartedAt = performance.now()
+    // Hiện lại D-pad theo ĐÚNG cài đặt của người chơi: `dpad: 'off'` phải vẫn
+    // tắt sau khi resume. Bản DOM không có khái niệm 'off' (nó là đường vào của
+    // người dùng bàn phím), nên nó chỉ đi theo pause.
+    dpad?.setVisible(state.settings.dpad !== 'off')
+    bridge.setDpadVisible(true)
     // Mở lại đúng overlay mà `status` đòi. Bỏ bước này thì người chơi quay về
     // một board đã chết mà không có nút nào.
     const again = overlayForStatus(state.status)

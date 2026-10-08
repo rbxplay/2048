@@ -137,7 +137,9 @@ export const STATIC_TOKENS: ReadonlyArray<readonly [string, string]> = [
   ['--dur-overlay', '800ms'],
   ['--delay-appear', '100ms'],
   ['--ease-standard', 'cubic-bezier(.25,.1,.25,1)'],
-  ['--font', '"2048 Digits", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
+  // §11.2 phương án dự phòng (không có WOFF2 trong repo) — phải khớp
+  // `FONT_STACK` ở `phaser/views/canvas.ts` và `--font` ở `styles/tokens.css`.
+  ['--font', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
 ]
 
 /** §B11:299-301 — override khi người chơi bật giảm chuyển động. */

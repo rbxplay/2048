@@ -2,16 +2,7 @@ import Phaser from 'phaser'
 import { formatNumber, type Locale, type Strings } from '../../i18n'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-
-/**
- * Stack §B2 — phải khớp tên family của `@font-face` và `FONT_STACK` trong
- * `scenes/Board.ts`. Lệch một chữ là số của HUD khác mặt chữ với số của tile.
- *
- * (Ba tiện ích nhỏ `FONT_STACK`/`hex`/`clamp` đang trùng với `scenes/Board.ts`.
- * Chưa gộp vì Task 12 không được sửa file ngoài phạm vi; đáng gộp vào
- * `theme/palette.ts` khi có người dùng thứ ba.)
- */
-const FONT_STACK = '"2048 Digits", system-ui, sans-serif'
+import { FONT_STACK } from './canvas'
 
 /** Chiều cao TỐI THIỂU của thẻ điểm; thẻ cao thêm nếu cỡ chữ §B2 đòi. */
 const CARD_H = 40

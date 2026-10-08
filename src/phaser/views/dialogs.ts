@@ -3,7 +3,7 @@ import { formatNumber, type Locale, type Strings } from '../../i18n'
 import { DARK_HEX, hexToInt, SHADOW_BASE_HEX } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-import { CARD_RADIUS, SHADOW_DY } from './canvas'
+import { CARD_RADIUS, FONT_STACK, SHADOW_DY } from './canvas'
 
 export type DialogKind = 'win' | 'gameover'
 /**
@@ -130,8 +130,6 @@ type Fadeable = Phaser.GameObjects.GameObject & {
   setAlpha(value?: number): unknown
   setVisible(value: boolean): unknown
 }
-
-const FONT_STACK = '"2048 Digits", system-ui, sans-serif'
 
 /** Cỡ tiêu đề overlay. §B2 không có dòng riêng cho tiêu đề overlay; card bị chặn
  * trần 420 px nên cỡ cố định ở đây là hợp lý. */

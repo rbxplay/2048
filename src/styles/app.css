@@ -18,6 +18,11 @@ body {
   background: var(--page);
   color: var(--text);
   font-family: var(--font);
+  /* §11.2/§B2: "số không nhảy bề rộng khi điểm đổi". Tầng DOM lấy được thuộc
+     tính này; tầng canvas thì không (Phaser Text chỉ đặt được chuỗi `ctx.font`,
+     không có API cho feature của font) — xem ghi chú ở `views/canvas.ts`. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   /* Canvas tự xử lý cú vuốt; cho trang cuộn theo là mất luôn nước đi. */
   overscroll-behavior: none;
 }

@@ -73,6 +73,11 @@ export type A11yBridge = {
   closeDialog(): void
   mountControls(opts: MountControlsOptions): void
   syncControls(state: A11ySettingsState): void
+  /**
+   * §9.5 + PRD:452 — khi nền tảng pause, D-pad biến mất. Bản DOM phải đi cùng
+   * bản canvas, nếu không thì hai tầng nói hai chuyện khác nhau.
+   */
+  setDpadVisible(visible: boolean): void
   setStrings(strings: Strings): void
   destroy(): void
 }
@@ -122,6 +127,8 @@ function readTheme(value: string): ThemeName {
 
 type Controls = {
   buttons: HTMLButtonElement[]
+  /** Vỏ bọc bốn nút mũi tên — cần giữ để ẩn/hiện cả cụm (§9.5). */
+  dpad: HTMLDivElement
   settingsButton: HTMLButtonElement
   sfx: HTMLInputElement
   haptics: HTMLInputElement
@@ -476,6 +483,7 @@ export function createA11yBridge(): A11yBridge {
 
     controls = {
       buttons,
+      dpad,
       settingsButton,
       sfx,
       haptics,
@@ -503,6 +511,26 @@ export function createA11yBridge(): A11yBridge {
     c.haptics.checked = state.haptics
     c.reducedMotion.checked = state.reducedMotion
     c.theme.value = state.theme
+  }
+
+  /**
+   * Ẩn/hiện cụm D-pad của tầng DOM.
+   *
+   * Dùng `hidden` chứ không `disabled`: pause là trạng thái nền tảng tạm chiếm
+   * màn hình, nên bốn nút mũi tên phải rời CẢ thứ tự tab LẪN cây accessibility —
+   * để lại thì trình đọc màn hình vẫn báo "có bốn nút mũi tên" trong khi bấm vào
+   * không có tác dụng gì, đúng kiểu DOM nói khác canvas.
+   *
+   * Cố ý KHÔNG gọi trong `relabel()`/`syncControls()`: trạng thái pause không
+   * phải một phần của state cài đặt, và để nó bị chiếu lại mỗi lần đổi cài đặt
+   * là tự ý bỏ pause.
+   */
+  function setDpadVisible(visible: boolean): void {
+    const c = controls
+    // Chưa `mountControls` (hoặc đã `destroy`) thì không có gì để ẩn — im lặng,
+    // không tạo nút muộn.
+    if (c === null) return
+    c.dpad.hidden = !visible
   }
 
   function setStrings(strings: Strings): void {
@@ -534,6 +562,7 @@ export function createA11yBridge(): A11yBridge {
     closeDialog,
     mountControls,
     syncControls,
+    setDpadVisible,
     setStrings,
     destroy,
   }

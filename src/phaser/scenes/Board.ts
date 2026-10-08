@@ -4,6 +4,7 @@ import type { Dir, MoveOutcome } from '../../game/rules'
 import { cellCenter, computeLayout, type Layout } from '../layout'
 import { tileFontSize, tileLabel } from '../tileSpec'
 import { buildTheme, type PhaserTheme } from '../theme'
+import { FONT_STACK } from '../views/canvas'
 
 /** Ngưỡng kéo, lấy từ §A4: `max(24 px, 0.18 × boardSide)`, tỉ lệ trục trội 1.2×. */
 const MIN_SWIPE_PX = 24
@@ -28,9 +29,6 @@ const CELL_RADIUS_RATIO = 0.06
 /** Cỡ dùng trước lần resize đầu tiên (iPhone SE 1st gen). */
 const DEFAULT_W = 320
 const DEFAULT_H = 568
-
-/** Stack §B2, phải khớp tên family của `@font-face`. */
-const FONT_STACK = '"2048 Digits", system-ui, sans-serif'
 
 /** Hàm thuần, xuất ra để test không cần scene. */
 export function resolveSwipe(dx: number, dy: number, minPx: number): Dir | null {

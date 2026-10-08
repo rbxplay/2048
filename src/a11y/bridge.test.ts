@@ -531,6 +531,72 @@ describe('inert — nền bị khoá trong lúc dialog mở', () => {
 })
 
 /**
+ * §9.5 / PRD:452 — pause của nền tảng phải ẩn D-pad. Bản canvas ẩn mà bản DOM
+ * còn nguyên là đúng kiểu lệch hai tầng: mắt không thấy nút nào, mà trình đọc
+ * màn hình vẫn đọc ra bốn nút mũi tên bấm vào không có tác dụng.
+ */
+describe('R41 — setDpadVisible (pause ẩn D-pad ở cả hai tầng)', () => {
+  const dpad = () => controlsRoot().querySelector<HTMLElement>('.a11y-dpad')
+
+  const mount = (): void => {
+    bridge.mountControls({
+      onDir: () => {},
+      onSettings: () => {},
+      onSettingsChange: () => {},
+      initial: { sfxVolume: 0.7, haptics: true, reducedMotion: false, theme: 'light' },
+    })
+  }
+
+  it('mặc định là HIỆN: chưa pause thì D-pad phải dùng được', () => {
+    mount()
+    expect(dpad()!.hidden).toBe(false)
+  })
+
+  it('ẩn cả cụm chứ không chỉ một nút', () => {
+    mount()
+    bridge.setDpadVisible(false)
+    expect(dpad()!.hidden).toBe(true)
+    // Vẫn đủ bốn nút trong DOM: ẩn chứ không dựng lại, nên resume không sinh
+    // thêm listener thứ hai trên cùng một nút.
+    expect(dpad()!.querySelectorAll('button')).toHaveLength(4)
+  })
+
+  it('resume hiện lại đúng cụm đó', () => {
+    mount()
+    bridge.setDpadVisible(false)
+    bridge.setDpadVisible(true)
+    expect(dpad()!.hidden).toBe(false)
+  })
+
+  it('chỉ đụng D-pad: nút Settings và ô nhập vẫn nguyên', () => {
+    mount()
+    bridge.setDpadVisible(false)
+    expect(controlsRoot().querySelector<HTMLElement>('.a11y-settings')!.hidden).toBe(false)
+    expect(controlsRoot().querySelector<HTMLInputElement>('input[type="range"]')!.hidden).toBe(
+      false,
+    )
+  })
+
+  it('đổi cài đặt trong lúc pause KHÔNG tự bỏ ẩn (pause không nằm trong state)', () => {
+    mount()
+    bridge.setDpadVisible(false)
+    bridge.syncControls({ sfxVolume: 0.2, haptics: false, reducedMotion: true, theme: 'dark' })
+    expect(dpad()!.hidden, 'syncControls chiếu cài đặt, không phải trạng thái pause').toBe(true)
+  })
+
+  it('chưa mountControls thì gọi là no-op, không dựng nút muộn', () => {
+    expect(() => bridge.setDpadVisible(false)).not.toThrow()
+    expect(dpad()).toBeNull()
+  })
+
+  it('sau destroy cũng là no-op', () => {
+    mount()
+    bridge.destroy()
+    expect(() => bridge.setDpadVisible(false)).not.toThrow()
+  })
+})
+
+/**
  * §12.2: canvas là nguồn sự thật, tầng này là bản chiếu CHỈ-ĐỌC. Nó không được
  * tự đổi trạng thái trình bày của mình theo một đường riêng — kể cả `Esc`, kể cả
  * những ca mà hai đường tình cờ trùng nhau.

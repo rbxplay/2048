@@ -9,11 +9,10 @@ import { hexToInt, SHADOW_BASE_HEX } from '../../theme/palette'
  * chặn việc di trú mà nó mở đường, và mọi view muốn dùng chung lại phải kéo theo
  * cả cây phụ thuộc của view khác.
  *
- * `FONT_STACK`, một hàm `hex` cục bộ và một `clamp` cục bộ đang bị chép ba lần ở
- * `scenes/Board.ts`, `views/hud.ts` và `views/dialogs.ts` — Task 12 đã ghi lại
- * khoản nợ đó. Tệp này KHÔNG thêm bản sao thứ tư: nó là chỗ ở đầu tiên cho phần
- * dùng chung. Ba bản cũ chưa gộp vì việc đó phải sửa tệp của ba task khác; di
- * trú chúng là một task riêng.
+ * `FONT_STACK`, một hàm `hex` cục bộ và một `clamp` cục bộ từng bị chép ở
+ * `scenes/Board.ts`, `views/hud.ts` và `views/dialogs.ts`. `FONT_STACK` đã gộp
+ * về đây (Task 18 — xem chú thích ở định nghĩa); `hex`/`clamp` vẫn là nợ đã ghi
+ * lại, chưa view nào dùng chúng qua đường này.
  *
  * Ở đây chỉ có thứ mà các view thật sự cần; không gom `clamp` vào vì chưa view
  * nào dùng tới nó qua đường này.
@@ -26,11 +25,23 @@ export const CARD_RADIUS = 16
 export const SHADOW_DY = 8
 
 /**
- * §B2: một font duy nhất, WOFF2 subset, nhúng trong bundle. Không CDN.
- * Trùng giá trị với bản cục bộ ở ba tệp kia — cố ý, để chữ trong panel Settings
- * không lệch khỏi chữ trong dialog.
+ * §B2 / §11.2 — ĐỊNH NGHĨA DUY NHẤT mặt chữ cho cả canvas lẫn DOM.
+ *
+ * §11.2 yêu cầu một WOFF2 subset nhúng trong bundle, và cho phép phương án dự
+ * phòng: "Nếu file font không lấy được, phương án dự phòng là `system-ui` stack
+ * (0 byte) — nhưng numeral sẽ khác nhau giữa Android / iOS / Windows." Không có
+ * tệp font nào trong repo, nên bản dựng này đi ĐÚNG đường dự phòng đó, và đi
+ * tường minh: tên family không tồn tại (`"2048 Digits"`) đã bị xoá hẳn, vì một
+ * cái tên không có `@font-face` nào đứng sau sẽ lặng lẽ rơi về font hệ thống mà
+ * không ai đọc ra được là yêu cầu §B2 đang không được đáp ứng.
+ *
+ * Giá trị này phải TRÙNG `--font` trong `styles/tokens.css` và
+ * `theme/palette.ts`: lệch một chữ là số của HUD khác mặt chữ với số của tile.
+ * Ba bản sao cục bộ trước đây ở `scenes/Board.ts`, `views/hud.ts`,
+ * `views/dialogs.ts` đã gộp về đây — chúng vốn là bốn chỗ phải sửa mỗi lần đổi
+ * font, tức bốn cơ hội để lệch.
  */
-export const FONT_STACK = '"2048 Digits", system-ui, sans-serif'
+export const FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
 
 /**
  * Bắt buộc để nét chữ sắc ở DPI cao (§B2). Mọi `Text` hiện số hoặc chữ đều phải

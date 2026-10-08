@@ -122,7 +122,7 @@ Black `#000000` page, white `#FFFFFF` tiles with a 2-px black border, numerals `
 | Token | Value | Notes |
 |---|---|---|
 | Family | one bundled WOFF2, subset: digits + Latin-1 + Vietnamese diacritics used in UI strings | **no Google Fonts / CDN** `[SRC: MUST NOT external calls]` |
-| Stack | `font-family: "2048 Digits", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` | fallback chain is safe and offline |
+| Stack | `font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` | fallback chain is safe and offline. **Không có WOFF2 trong repo**, nên v1 dùng đúng phương án dự phòng mà spec §11.2 cho phép: 0 byte, nhưng numeral khác nhau giữa Android / iOS / Windows |
 | Numerals | `font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1` | prevents width jitter as scores change `[DESIGN]` |
 | Tile numerals | bold 700, size = `cell × k` where k = 0.51 (1–2 digits), 0.42 (3 digits), 0.33 (4 digits), 0.28 (5+ digits) | derived from the reference: 55/45/35/30 px on a 106.25 px cell `[SRC]` |
 | HUD score/best numbers | bold 700, `clamp(18px, 4.5vmin, 30px)` | |
@@ -294,7 +294,7 @@ external network request (fonts, icons, images, analytics). 10. A spinner that b
   --delay-appear:100ms;
   --ease-standard:cubic-bezier(.25,.1,.25,1);
   /* type */
-  --font: "2048 Digits", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 @media (prefers-reduced-motion: reduce){
   :root{ --dur-slide:0ms; --dur-pop:0ms; --dur-appear:120ms; --dur-badge:0ms; --dur-overlay:200ms; --delay-appear:0ms; }
