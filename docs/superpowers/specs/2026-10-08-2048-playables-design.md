@@ -837,6 +837,52 @@ Một `div` có `position: absolute; width: 1px; height: 1px; overflow: hidden; 
 Nút và ô nhập là **DOM thật**, không phải hình vẽ trong canvas. Nhờ vậy bàn phím, screen reader,
 zoom 200 % và target ≥ 44 px đều đạt mà không phải tự dựng lại.
 
+> **Amend 2026-10-08 (4) — nút và ô nhập DOM không còn nằm trong `div` 1 px "lộ ra khi có focus";
+> mỗi cái nằm TRONG SUỐT ngay trên nút canvas của nó, theo quyết định của chủ dự án.**
+>
+> Bản cài đặt trước ẩn cả gốc điều khiển rồi cho nó thoát clip bằng `:focus-within`
+> (`position: static`) để focus ring thấy được (WCAG 2.4.7). Gốc đó rơi vào dòng chảy bên dưới
+> `#app` cao 100 %, nên **mỗi lần dialog thắng / thua mở là trang tràn và mọc thanh cuộn**
+> (`docs/verification-report.md`, "Quan sát phụ": 1280×720 → `scrollHeight` 740; 260×400 có cả hai
+> thanh, canvas bị thu 15 px) — mà dải điều khiển lại nằm dưới mép màn hình nên ring cũng không ai
+> thấy. Che `overflow` không sửa được vế sau. Quy tắc mới:
+>
+> 1. Gốc bàn cờ + hai vùng live vẫn là `div` 1 px bị cắt như bảng trên. Gốc điều khiển thì **không
+>    chiếm chỗ và không cắt** (`position: fixed`, 0×0); từng `<button>` / `<input>` / `<select>` tự
+>    `position: fixed` vào đúng hộp của nút canvas tương ứng. `fixed` không góp vào vùng cuộn, nên
+>    trang không còn đường nào để tràn. Tiêu đề dialog và chữ của nhãn là chữ chỉ-cho-screen-reader.
+> 2. **Hình học có một nguồn**: các view của canvas phơi hộp của chính hình đang nhận input
+>    (`Dpad.buttonRects`, `Hud.gearRect`, `Dialogs.buttonRects`, `Settings.controlRects`);
+>    `src/app/placement.ts` (hàm thuần) đổi toạ độ game → trang theo hộp thật của canvas và quyết
+>    định điều khiển nào đứng ở đâu; `bridge.placeControls` chỉ đặt phần tử vào hộp được đưa cho.
+>    `main.ts` gọi lại ở resize, mở/đóng dialog, mở/đóng Settings. Không có bản layout thứ hai.
+> 3. **Trong suốt nhưng còn trong cây accessibility**: bỏ nền, chữ, `appearance` — không
+>    `opacity: 0` (kéo luôn `outline` về 0), không `display: none` / `visibility: hidden` /
+>    `aria-hidden`. Focus ring `3px solid var(--focus)`, lệch 2 px (DesignSystem §B8) vẽ quanh nút
+>    DOM, tức quanh nút canvas đang nhìn thấy.
+> 4. **`pointer-events: none` trên mọi điều khiển DOM.** Chuột và cảm ứng đi xuyên xuống canvas, nên
+>    một cú bấm chỉ có một nơi nhận (ô bấm của canvas); Enter / Space và `element.click()` của screen
+>    reader không qua hit-test nên chỉ tới nút DOM. Để cả hai cùng nhận là hai action cho một lần bấm.
+> 5. **Ring ở mép màn hình.** Ring vươn ra ngoài nút 5 px, mà nút "xuống" của D-pad dán sát đáy
+>    viewport ở mọi bố cục xếp dọc. Hộp DOM lùi ĐÚNG cạnh chạm mép vào tối đa 5 px để ring đủ bốn
+>    cạnh (`fitRing`); ba cạnh kia trùng nút canvas. Vùng bấm của chuột / cảm ứng là ô bấm canvas
+>    48 px, không đổi. Vì vậy CSS không còn `min-width` / `min-height`: cỡ ≥ 44 / ≥ 48 px đến từ nút
+>    canvas và được kiểm ở test của view và của `placement.ts`.
+> 6. **Ô nhập cài đặt.** Bảng Settings MỞ: `input[type=range]` trên rãnh slider (rãnh đang vẽ × 44
+>    px), hai checkbox trên hai toggle, `<select>` trên nút theme (canvas chỉ có MỘT nút xoay vòng ba
+>    theme và hiện tên theme hiện tại — đúng giá trị `<select>` đang giữ; mũi tên lên/xuống đổi
+>    theme, không dựng ba nút mới). Bảng ĐÓNG: canvas không vẽ bốn điều khiển đó ở đâu cả, nhưng
+>    theo bảng trên chúng vẫn phải ở trong cây accessibility và thứ tự tab — khi đó chúng đứng trên
+>    **bánh răng**, nên ring hiện quanh bánh răng thay vì rơi vào chỗ vô hình. `Settings.sync` chiếu
+>    thay đổi từ ô nhập DOM lên hình vẽ (con trượt, dấu tick, nhãn theme) khi bảng đang mở.
+> 7. Không đổi: bẫy focus và trả focus của dialog, `inert` cho nền, `Esc` không `preventDefault()`,
+>    guard bàn phím cho ô nhập DOM, hai vùng live, vòng đời ba trạng thái của overlay.
+>
+> Dòng "Focus ring" và "Zoom 200 % … DOM a11y không bị cắt" ở §12.3 đọc theo quy tắc này. Giới hạn
+> đã biết: nút ✕ của dialog và nút "Đóng" của Settings chỉ có trên canvas (bàn phím dùng `Esc`); khi
+> D-pad canvas tự ẩn (`dpad: 'auto'` sau cú vuốt, hoặc `'off'`) bốn nút DOM vẫn ở chỗ D-pad, nên
+> ring ôm một ô trống. Số đo trên trình duyệt thật: `docs/verification-report.md` mục 7.
+
 ### 12.2 Đồng bộ hai chiều
 
 Canvas là nguồn sự thật về hiển thị; DOM a11y là **bản chiếu chỉ-đọc** của cùng state. Không có
