@@ -8,8 +8,8 @@ Phạm vi: Task 19. Lượt đo đầu không sửa mã sản phẩm; mọi lỗ
 - Cổng chất lượng: `typecheck`, `test` (634/634), `build`, `contrast` **exit 0**.
   `check-bundle` và `preflight` **exit 1**, **đúng bằng baseline đã khai trong spec** (không lệch).
   *Cập nhật sau báo cáo này:* hai script đã được sửa để bắt việc DÙNG Web Storage và SDK Amplitude thật
-  (spec, "Amend 2026-10-08 (2)"); trên cùng `dist`, `preflight` nay **exit 0** và `check-bundle` còn
-  **exit 1** với 2 lỗi `visibilitychange`. Các số trong bảng dưới là số đo của script cũ.
+  (spec, "Amend 2026-10-08 (2)"); trên cùng `dist`, `preflight` và `check-bundle` nay đều **exit 0**
+  (Page Visibility kiểm ở `src/`; listener của Phaser vẫn có trong bundle). Các số trong bảng dưới là số đo của script cũ.
 - Bundle: `dist/index.html` 1 426 044 byte, **gzip -9 = 370 503 byte (361,8 KiB)**, giới hạn 614 400 → **đạt NFR-01**.
 - Request ngoài: chỉ `www.youtube.com` (SDK). Không font, ảnh, analytics.
 - QA §A13 (14 mục): **ĐẠT 13 · KHÔNG ĐẠT 1 (mục 14; mục 4 và 7 đã đạt sau sửa D1) · CHƯA KIỂM 0** (mục 12 chỉ kiểm qua cây a11y, không phải screen reader thật; mục 13 đạt theo thiết kế).

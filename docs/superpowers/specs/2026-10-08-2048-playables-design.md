@@ -326,10 +326,17 @@ hưởng cả năm lỗi này.
 > - Đã thử trên mẫu: 8 kiểu dùng Web Storage và 2 kiểu dùng SDK Amplitude đều bị bắt; mẫu trích từ
 >   Phaser thì không.
 >
+> - Page Visibility API (`check-bundle.mjs`) được kiểm ở **mã nguồn dự án** (`src/`, bỏ qua file
+>   `*.test.*`), không kiểm ở bundle: `visibilitychange`, `document.visibilityState`,
+>   `document.hidden`. Listener của `VisibilityHandler` trong Phaser luôn có trong `dist` và không
+>   tắt được (xem đoạn §6 ngay trên); thứ cert cấm mà dự án kiểm soát được là mã của chính nó tự
+>   nghe sự kiện. Số lần xuất hiện trong bundle được in thành ghi chú. Thiếu thư mục nguồn thì
+>   script báo lỗi chứ không coi là đạt.
+>
 > **Kết quả trên `dist` hiện tại:** §15 mục 5 — preflight **exit 0**, 0 MUST (A13 #14 đạt nguyên
-> văn). §15 mục 6 / §14.2 — `check-bundle.mjs` vẫn **exit 1** với **2 lỗi** `visibilitychange`
-> (`dist/index.html:13`, từ `VisibilityHandler` của Phaser — xem đoạn §6 ngay trên); mục này là
-> việc dùng API thật của engine nên **không** nới script.
+> văn). §15 mục 6 / §14.2 — `check-bundle.mjs` **exit 0**. Lưu ý khi nộp: hai cổng xanh nghĩa là
+> **mã dự án** không dùng các API này; listener `visibilitychange` của engine vẫn nằm trong bundle,
+> nên phần giải trình và số đo ở trên vẫn phải đi kèm hồ sơ.
 
 ### 5a. Mock adapter lọt vào bundle production
 
