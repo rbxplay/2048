@@ -39,6 +39,23 @@ FNAME_OK = re.compile(r'^[A-Za-z0-9._-]+$')
 TEXT_EXT = {'.js', '.mjs', '.cjs', '.html', '.htm', '.css', '.json', '.txt', '.svg'}
 SCAN_LIMIT = 8 * MiB                  # không quét file lớn hơn (wasm, atlas...)
 
+# Web Storage: bắt việc DÙNG, không bắt cái tên. Engine (Phaser `Device.Features`) có dòng dò
+# tính năng `!!localStorage.getItem` và thuộc tính `localStorage:!1` — không đọc, không ghi gì.
+# Ba vế: gọi method / truy cập `[...]`; gán thuộc tính; đem chính object đi chỗ khác (alias —
+# để `const s = localStorage; s.setItem()` không lọt). `sys.localStorage.setItem(` của Cocos
+# vẫn khớp vế đầu.
+STORAGE = r'\b(?:localStorage|sessionStorage)'
+STORAGE_USE = '|'.join([
+    STORAGE + r'\s*(?:\.\s*(?:setItem|getItem|removeItem|clear|key)\s*\(|\[)',
+    STORAGE + r'\s*\.\s*[A-Za-z_$][\w$]*\s*=(?!=)',
+    r'[=(,:?]\s*(?:(?:window|globalThis|self)\s*\.\s*)?(?:localStorage|sessionStorage)\s*[;,)}\n]',
+])
+STORAGE_NAME = re.compile(STORAGE)
+# `amplitude` là một từ thường gặp (tham số hoạt ảnh `{base, amplitude, duration}` của engine),
+# nên chỉ bắt dấu hiệu của SDK Amplitude thật: lời gọi API, endpoint, tên package.
+AMPLITUDE_SDK = (r'\bamplitude\s*\.\s*(?:getInstance|init|track|logEvent|identify|setUserId|add)\s*\(|'
+                 r'\bamplitude\.com\b|@amplitude/|\bamplitude-js\b')
+
 # Mẫu cấm / rủi ro (kèm nhóm yêu cầu tương ứng). severity: 'error' | 'warn'
 EXT_CALL_ALLOWED = ('youtube.com/game_api', 'www.youtube.com/game_api')
 BANNED = [
@@ -52,9 +69,9 @@ BANNED = [
      'error', 'MUST NOT display in-game advertising via off-platform services (Monetization)'),
     ('off-platform-payment', re.compile(r'\b(stripe|paypal|braintree|squareup|vnpay|momo)\b', re.I),
      'error', 'MUST NOT implement in-game purchases via off-platform services (Monetization)'),
-    ('analytics-sdk', re.compile(r'\b(gtag|GoogleAnalytics|firebase\.analytics|mixpanel|amplitude|posthog|sentry|datadog)\b', re.I),
+    ('analytics-sdk', re.compile(r'\b(gtag|GoogleAnalytics|firebase\.analytics|mixpanel|posthog|sentry|datadog)\b|' + AMPLITUDE_SDK, re.I),
      'error', 'MUST NOT make external calls — analytics bên thứ ba là lỗi phổ biến nhất khiến build trượt'),
-    ('non-sdk-storage', re.compile(r'\blocalStorage\b|\bsessionStorage\b|\bindexedDB\b|document\.cookie|PlayerPrefs|sys\.localStorage|sys\.save', re.I),
+    ('non-sdk-storage', re.compile(STORAGE_USE + r'|\bindexedDB\b|document\.cookie|PlayerPrefs|sys\.save', re.I),
      'error', 'Progress MUST be saved only through the SDK (saveData/loadData); storage của browser/engine là lý do bị từ chối'),
     ('page-visibility-api', re.compile(r'document\.visibilityState|onvisibilitychange|addEventListener\(\s*["\']visibilitychange'),
      'error', 'MUST NOT use the Page Visibility API — dùng SDK onPause/onResume'),
@@ -200,6 +217,11 @@ def check_bundle(bundle: Path, extra_src: Path | None):
     for name, (sev, why, hits) in violations.items():
         (errors if sev == 'error' else warnings).append(
             f'[{name}] {why} → {", ".join(hits)}')
+    if 'non-sdk-storage' not in violations:
+        names = sum(len(STORAGE_NAME.findall(text)) for _, text in targets)
+        if names:
+            notes.append(f'Tên Web Storage xuất hiện {names} lần nhưng không có lời gọi nào dùng nó '
+                         '(dò tính năng của engine) — không tính là lỗi non-sdk-storage')
 
     present = {name for name, rx, _ in REQUIRED
                for _, text in targets if rx.search(text)}

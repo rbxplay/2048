@@ -17,8 +17,21 @@ if (!statSync(DIST, { throwIfNoEntry: false })?.isDirectory()) {
   process.exit(1)
 }
 
+const STORAGE = String.raw`\b(?:localStorage|sessionStorage)`
+const STORAGE_USE = [
+  STORAGE + String.raw`\s*(?:\.\s*(?:setItem|getItem|removeItem|clear|key)\s*\(|\[)`,
+  STORAGE + String.raw`\s*\.\s*[A-Za-z_$][\w$]*\s*=(?!=)`,
+  String.raw`[=(,:?]\s*(?:(?:window|globalThis|self)\s*\.\s*)?(?:localStorage|sessionStorage)\s*[;,)}\n]`,
+].join('|')
+const STORAGE_NAME = new RegExp(STORAGE, 'g')
+
 const BANNED = [
-  ['bộ nhớ trình duyệt', /\blocalStorage\b|\bsessionStorage\b|\bindexedDB\b|document\.cookie/],
+  // Web Storage: bắt việc DÙNG, không bắt cái tên. Engine (Phaser `Device.Features`)
+  // có dòng dò tính năng `!!localStorage.getItem` và thuộc tính `localStorage:!1` —
+  // không đọc, không ghi gì. Cert cấm cơ chế lưu tiến trình khác SDK, tức cấm hành vi.
+  // Ba vế: gọi method / truy cập `[...]`; gán thuộc tính; đem chính object đi chỗ khác
+  // (alias — vế này để `const s = localStorage; s.setItem()` không lọt).
+  ['bộ nhớ trình duyệt', new RegExp(STORAGE_USE + String.raw`|\bindexedDB\b|document\.cookie`)],
   ['Page Visibility API', /document\.visibilityState|visibilitychange/],
   ['request ngoài', /(?:fetch|import)\s*\(\s*["'`]https?:\/\/|<link[^>]+href\s*=\s*["']https?:\/\//i],
   ['SDK quảng cáo bên thứ ba', /\b(AdMob|UnityAds|ironSource|AppLovin)\b/],
@@ -45,6 +58,7 @@ function walk(dir) {
 
 const files = walk(DIST)
 const errors = []
+let storageNames = 0
 
 for (const f of files) {
   const rel = relative(DIST, f)
@@ -55,6 +69,7 @@ for (const f of files) {
   const ext = dot === -1 ? '' : rel.slice(dot)
   if (!TEXT_EXT.has(ext)) continue
   const text = readFileSync(f, 'utf8')
+  storageNames += text.match(STORAGE_NAME)?.length ?? 0
   for (const [label, rx] of BANNED) {
     const re = new RegExp(rx.source, rx.flags.includes('g') ? rx.flags : rx.flags + 'g')
     for (const m of text.matchAll(re)) {
@@ -76,3 +91,6 @@ if (errors.length > 0) {
   process.exit(1)
 }
 console.log(`✅ check-bundle: ${files.length} file, không có chuỗi cấm`)
+if (storageNames > 0) {
+  console.log(`ℹ️  tên Web Storage xuất hiện ${storageNames} lần nhưng không có lời gọi nào dùng nó (dò tính năng của engine)`)
+}

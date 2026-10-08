@@ -310,6 +310,26 @@ hưởng cả năm lỗi này.
 > không tạo đường pause thứ hai có ảnh hưởng state; chỉ `onPause` của SDK mới cho **0 frame**. Đã
 > đặt `autoFocus: false` để game không giật focus của trang, và pause/resume chạy **chỉ** qua SDK
 > với đủ bốn vế: vòng lặp, âm thanh, ghi save, và input/UI. Không patch vendor.
+>
+> **Amend 2026-10-08 (2) — hai script kiểm được sửa để bắt HÀNH VI, theo quyết định của chủ dự án.**
+> Các số đo ở trên là của script **trước** khi sửa; giữ lại làm hồ sơ. Sau khi sửa:
+>
+> - `non-sdk-storage` (preflight) và nhóm "bộ nhớ trình duyệt" (`check-bundle.mjs`) chỉ bắn khi
+>   `localStorage`/`sessionStorage` thật sự được **dùng**: gọi `setItem`/`getItem`/`removeItem`/
+>   `clear`/`key`, truy cập `[...]`, gán thuộc tính, hoặc đem chính object đi chỗ khác (alias).
+>   Dòng dò tính năng `!!localStorage.getItem` và thuộc tính `localStorage:!1` của Phaser không
+>   khớp vế nào; preflight ghi chúng thành một dòng ghi chú kèm số lần. `indexedDB`,
+>   `document.cookie`, `PlayerPrefs`, `sys.save` vẫn bắt theo tên như cũ.
+> - `analytics-sdk` không còn bắt từ trần `amplitude` (tên tham số hoạt ảnh của Phaser) mà bắt dấu
+>   hiệu của SDK Amplitude thật: lời gọi `amplitude.init(`/`.getInstance(`/`.track(`/…, tên miền
+>   `amplitude.com`, package `@amplitude/…`, `amplitude-js`.
+> - Đã thử trên mẫu: 8 kiểu dùng Web Storage và 2 kiểu dùng SDK Amplitude đều bị bắt; mẫu trích từ
+>   Phaser thì không.
+>
+> **Kết quả trên `dist` hiện tại:** §15 mục 5 — preflight **exit 0**, 0 MUST (A13 #14 đạt nguyên
+> văn). §15 mục 6 / §14.2 — `check-bundle.mjs` vẫn **exit 1** với **2 lỗi** `visibilitychange`
+> (`dist/index.html:13`, từ `VisibilityHandler` của Phaser — xem đoạn §6 ngay trên); mục này là
+> việc dùng API thật của engine nên **không** nới script.
 
 ### 5a. Mock adapter lọt vào bundle production
 
