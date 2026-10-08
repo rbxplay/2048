@@ -35,6 +35,15 @@ const LABEL_MIN = 11
 const LABEL_PER_VMIN = 0.024
 const LABEL_MAX = 14
 
+/** §B8:222 — hàng HUD có "Settings gear at the right, 44×44". */
+export const GEAR_SIZE = 44
+/** Khe giữa thẻ BEST và bánh răng. */
+const GEAR_GAP = 8
+/** §B8 — container nút icon bo góc 8 px. */
+const ICON_RADIUS = 8
+/** §B6 — "stroke-width: 2". */
+const ICON_STROKE = 2
+
 /** `0xRRGGBB` → `#rrggbb`, dạng màu mà `TextStyle.color` nhận. */
 function hex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`
@@ -77,6 +86,14 @@ export function hudCardWidth(boardSide: number, gap: number): number {
   return Math.max(0, (boardSide - gap) / 2)
 }
 
+/**
+ * Bề ngang còn lại cho hai thẻ điểm sau khi chừa chỗ bánh răng Settings ở cuối
+ * hàng (§B8:222). HÀM THUẦN.
+ */
+export function hudCardsWidth(boardSide: number): number {
+  return Math.max(0, boardSide - GEAR_SIZE - GEAR_GAP)
+}
+
 /** Cỡ số điểm/kỷ lục theo §B2. HÀM THUẦN — test được không cần Phaser. */
 export function hudNumberSize(layout: Layout): number {
   return clamp(NUM_PER_VMIN * vmin(layout), NUM_MIN, NUM_MAX)
@@ -113,7 +130,15 @@ export function createHud(
   scene: Phaser.Scene,
   theme: PhaserTheme,
   layout: Layout,
-  opts: { getLocale: () => Locale; getStrings: () => Strings },
+  opts: {
+    getLocale: () => Locale
+    getStrings: () => Strings
+    /**
+     * §B8:222 — bánh răng Settings ở cuối hàng HUD. Task 12 chỉ dựng nút và gọi
+     * callback; nối vào panel thật là việc của task settings.
+     */
+    onSettings: () => void
+  },
 ): Hud {
   let t = theme
   let l = layout
@@ -156,6 +181,48 @@ export function createHud(
 
   const texts = [scoreLabel, scoreValue, bestLabel, bestValue]
 
+  // Bánh răng Settings: hình do `Graphics` vẽ, còn ô chạm là một `Rectangle`
+  // trong suốt 44×44. Không gắn `setInteractive()` lên chính `Graphics` được —
+  // `Graphics` không có `width`, nên ô bấm sẽ rộng 0 và nút không bấm trúng.
+  const gear = scene.add.graphics()
+  const gearHit = scene.add.rectangle(0, 0, GEAR_SIZE, GEAR_SIZE, 0, 0)
+  gearHit.setInteractive({ useHandCursor: true })
+  gearHit.on('pointerup', () => opts.onSettings())
+
+  function gearCenter(): { x: number; y: number } {
+    return {
+      x: l.boardX + l.boardSide - GEAR_SIZE / 2,
+      // Giữa hàng HUD. `Layout` không có trường `hudHeight` — nó là khoảng cách
+      // giữa `hudY` và `boardY`.
+      y: l.hudY + (l.boardY - l.hudY) / 2,
+    }
+  }
+
+  function drawGear(): void {
+    const { x: cx, y: cy } = gearCenter()
+    gear.clear()
+    gear.fillStyle(t.slot, 1)
+    gear.fillRoundedRect(cx - GEAR_SIZE / 2, cy - GEAR_SIZE / 2, GEAR_SIZE, GEAR_SIZE, ICON_RADIUS)
+    // §B6: icon 24 px optical, nét 2 px. Bánh răng = vành + 8 răng + trục; ở
+    // cỡ này ba thứ đó là đủ để đọc ra "cài đặt" mà không cần glyph của font
+    // (font có thể thiếu ký tự, còn hình vẽ thì luôn có).
+    const r = GEAR_SIZE * 0.26
+    gear.lineStyle(ICON_STROKE, t.text, 1)
+    gear.strokeCircle(cx, cy, r * 0.72)
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4
+      gear.lineBetween(
+        cx + Math.cos(a) * r * 0.62,
+        cy + Math.sin(a) * r * 0.62,
+        cx + Math.cos(a) * r,
+        cy + Math.sin(a) * r,
+      )
+    }
+    gear.fillStyle(t.text, 1)
+    gear.fillCircle(cx, cy, r * 0.3)
+    gearHit.setPosition(cx, cy)
+  }
+
   function layoutTexts(): void {
     const s = opts.getStrings()
     const labelSize = hudLabelSize(l)
@@ -170,7 +237,8 @@ export function createHud(
     scoreValue.setFontSize(numSize)
     bestValue.setFontSize(numSize)
 
-    const half = hudCardWidth(l.boardSide, l.gap)
+    const cardsW = hudCardsWidth(l.boardSide)
+    const half = hudCardWidth(cardsW, l.gap)
     const cardH = hudCardHeight(l)
     const y = l.hudY
     // Mép trên của số: nhãn + khe. Ở cỡ nhỏ nhất (11 px nhãn) ra đúng 16 px như
@@ -178,12 +246,14 @@ export function createHud(
     const valueTop = CARD_PAD_TOP + labelSize + LABEL_GAP
 
     cards[0]!.setPosition(l.boardX + half / 2, y + cardH / 2).setSize(half, cardH)
-    cards[1]!.setPosition(l.boardX + l.boardSide - half / 2, y + cardH / 2).setSize(half, cardH)
+    cards[1]!.setPosition(l.boardX + cardsW - half / 2, y + cardH / 2).setSize(half, cardH)
 
     scoreLabel.setPosition(l.boardX + CARD_PAD_X, y + CARD_PAD_TOP)
     scoreValue.setPosition(l.boardX + CARD_PAD_X, y + valueTop)
-    bestLabel.setPosition(l.boardX + l.boardSide - half + CARD_PAD_X, y + CARD_PAD_TOP)
-    bestValue.setPosition(l.boardX + l.boardSide - half + CARD_PAD_X, y + valueTop)
+    bestLabel.setPosition(l.boardX + cardsW - half + CARD_PAD_X, y + CARD_PAD_TOP)
+    bestValue.setPosition(l.boardX + cardsW - half + CARD_PAD_X, y + valueTop)
+
+    drawGear()
   }
 
   function clearBadge(): void {
@@ -242,6 +312,7 @@ export function createHud(
       for (const card of cards) card.setFillStyle(t.board)
       for (const txt of texts) txt.setColor(hex(t.text))
       if (badge !== null) badge.setColor(hex(t.text))
+      drawGear()
     },
     setReducedMotion(on) {
       reducedMotion = on
@@ -251,7 +322,7 @@ export function createHud(
     },
     destroy() {
       clearBadge()
-      for (const o of [...cards, ...texts]) o.destroy()
+      for (const o of [...cards, ...texts, gear, gearHit]) o.destroy()
     },
   }
 }
