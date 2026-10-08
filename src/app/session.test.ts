@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { fromData, makeIdFactory, toData } from '../game/board'
+import { canMove, fromData, makeIdFactory, toData, type Tile } from '../game/board'
 import { mulberry32 } from '../game/rng'
-import type { MoveContext } from '../game/rules'
+import type { Dir, MoveContext } from '../game/rules'
 import {
   applyInput, createSession, keepPlaying, newGame, THRESHOLD_STEP, toSave,
   type SessionState,
@@ -73,6 +73,73 @@ describe('createSession', () => {
       },
     })
     expect(s.board.flat().filter((c) => c !== null)).toHaveLength(2)
+  })
+
+  it('resume board đã hết nước ⇒ status over ngay, không phải playing', () => {
+    // Thua bình thường: save ở milestone 'over' (INT-05) rồi mở lại game.
+    const s = createSession({
+      ctx: ctx(),
+      resume: {
+        board: [
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+        ],
+        score: 1234,
+        moves: 88,
+        won: false,
+        keepPlaying: false,
+      },
+    })
+    expect(canMove(s.board)).toBe(false)
+    expect(s.status).toBe('over')
+  })
+
+  it('resume board hết nước sau khi đã thắng và Chơi tiếp ⇒ status over', () => {
+    // Thắng trên board đầy ⇒ keepPlaying phát hiện stuck và set keepPlaying:true,
+    // nên save ra won:true, keepPlaying:true trên board không còn nước.
+    const s = createSession({
+      ctx: ctx(),
+      resume: {
+        board: [
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+        ],
+        score: 20480,
+        moves: 300,
+        won: true,
+        keepPlaying: true,
+      },
+    })
+    expect(canMove(s.board)).toBe(false)
+    expect(s.status).toBe('over')
+  })
+
+  it('sau resume, id trên board vẫn duy nhất qua các nước đi tiếp', () => {
+    // Board khôi phục và tile sinh ra sau đó phải dùng CHUNG một bộ đếm id,
+    // nếu không id trùng và Board.ts#acquire trả nhầm node cho hai tile khác nhau.
+    const c = ctx()
+    let state = createSession({
+      ctx: c,
+      resume: {
+        board: [[0, 0, 2, 4], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        score: 0,
+        moves: 0,
+        won: false,
+        keepPlaying: false,
+      },
+    })
+    const dirs: Dir[] = ['left', 'right', 'left']
+    dirs.forEach((dir, i) => {
+      const step = applyInput(state, dir, c)
+      expect(step.accepted).toBe(true)
+      state = step.state
+      const ids = state.board.flat().filter((t): t is Tile => t !== null).map((t) => t.id)
+      expect(new Set(ids).size, `id trùng sau lượt ${i + 1}`).toBe(ids.length)
+    })
   })
 })
 

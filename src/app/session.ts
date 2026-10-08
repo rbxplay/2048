@@ -1,4 +1,4 @@
-import { canMove, fromData, makeIdFactory, maxValue, toData, type Board } from '../game/board'
+import { canMove, fromData, maxValue, toData, type Board } from '../game/board'
 import {
   applyMove, createStartBoard,
   type Dir, type MoveContext, type MoveOutcome,
@@ -70,9 +70,16 @@ export function createSession(opts: {
   const resume = opts.resume
   if (resume != null) {
     try {
-      const board = fromData(resume.board, makeIdFactory())
+      // Dùng CHÍNH bộ đếm id của ván này: cấp id bằng một factory riêng sẽ
+      // trùng id với tile sinh ra ở nước đi đầu tiên, mà id là danh tính node
+      // của renderer (§6.1).
+      const board = fromData(resume.board, opts.ctx.nextId)
       // Board rỗng không phải trạng thái hợp lệ giữa ván — coi như chưa có ván.
       if (board.flat().some((c) => c !== null)) {
+        // Trạng thái chết phải suy lại từ board: `resume` không mang `status`,
+        // board hết nước mà sống lại thành 'playing' thì nước đi nào cũng là
+        // no-op nên overlay GAME OVER không bao giờ mở.
+        const stuck = !canMove(board)
         return {
           ...common,
           board,
@@ -80,7 +87,7 @@ export function createSession(opts: {
           moves: resume.moves,
           won: resume.won,
           keepPlaying: resume.keepPlaying,
-          status: resume.won && !resume.keepPlaying ? 'won' : 'playing',
+          status: stuck ? 'over' : resume.won && !resume.keepPlaying ? 'won' : 'playing',
           thresholdMark: Math.floor(resume.score / THRESHOLD_STEP) * THRESHOLD_STEP,
         }
       }
