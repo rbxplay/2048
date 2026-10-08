@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { SIZE, type Board, type Pos } from '../../game/board'
 import type { Dir, MoveOutcome } from '../../game/rules'
-import { computeLayout, type Layout } from '../layout'
+import { cellCenter, computeLayout, type Layout } from '../layout'
 import { tileFontSize, tileLabel } from '../tileSpec'
 import { buildTheme, type PhaserTheme } from '../theme'
 
@@ -96,6 +96,8 @@ export class BoardScene extends Phaser.Scene {
   /** Id đang bay vào ô merge; chưa huỷ được vì còn phải hút vào rồi mới biến mất. */
   #absorbing = new Set<number>()
   #reducedMotion = false
+  /** `true` chỉ trong khoảng `create()` → `shutdown`: chưa/không còn lớp nào để vẽ. */
+  #ready = false
   #boardLayer!: Phaser.GameObjects.Container
   #dragStart: { x: number; y: number } | null = null
 
@@ -106,6 +108,7 @@ export class BoardScene extends Phaser.Scene {
 
   create(): void {
     this.#boardLayer = this.add.container(0, 0)
+    this.#ready = true
     this.#rebuildLayout()
 
     this.scale.on('resize', this.#onResize, this)
@@ -114,6 +117,9 @@ export class BoardScene extends Phaser.Scene {
     this.input.on('pointerupoutside', this.#onPointerUp, this)
 
     this.events.once('shutdown', () => {
+      // Trước `#abortTweens()` để một `setTheme` gọi xen vào giữa không vẽ vào
+      // lớp đã bị huỷ.
+      this.#ready = false
       this.scale.off('resize', this.#onResize, this)
       // Ván mới có thể dựng lại scene. Không dọn pool thì `#acquire` trả về
       // container đã bị huỷ và tile của ván sau không bao giờ hiện.
@@ -127,7 +133,13 @@ export class BoardScene extends Phaser.Scene {
   setTheme(theme: PhaserTheme): void {
     this.#theme = theme
     this.cameras.main.setBackgroundColor(theme.page)
-    // Vẽ lại mọi tile đang sống, nếu không hai bảng màu sẽ trộn lẫn (rủi ro R12).
+    // Trước `create()` (hoặc sau `shutdown`) chưa có lớp nào để vẽ — lúc đó màu
+    // camera ở trên là phần duy nhất áp được. Không guard thì `#boardLayer` ném.
+    if (!this.#ready) return
+    // Mặt board và 16 slot CŨNG mang màu theme: chỉ sơn lại tile là để mặt board
+    // của bảng màu cũ nằm dưới tile mới — đúng cái "hai bảng màu trộn lẫn" mà
+    // tính năng tương phản cao (§B1.5) không được phép có.
+    this.#drawBoardPlate()
     for (const node of this.#nodes.values()) this.#paint(node, node.value)
   }
 
@@ -137,7 +149,11 @@ export class BoardScene extends Phaser.Scene {
 
   /** Dựng lại toàn bộ bàn từ một board — đường "ảnh chụp", không phát hoạt ảnh. */
   renderBoard(board: Board): void {
+    // `#settle()` chốt mọi node đang sống về cỡ 1/alpha 1 (kể cả nền đang pop
+    // dở), nên vòng lặp dưới chỉ còn việc vẽ lại và định vị; node mới lấy từ
+    // `#acquire` vốn đã ở cỡ 1/alpha 1.
     this.#abortTweens()
+    this.#settle()
     const seen = new Set<number>()
     for (let row = 0; row < SIZE; row++) {
       for (let col = 0; col < SIZE; col++) {
@@ -147,7 +163,6 @@ export class BoardScene extends Phaser.Scene {
         const node = this.#acquire(tile.id)
         this.#paint(node, tile.value)
         this.#place(node, { row, col })
-        node.container.setScale(1).setAlpha(1)
       }
     }
     for (const id of [...this.#nodes.keys()]) {
@@ -160,7 +175,13 @@ export class BoardScene extends Phaser.Scene {
    */
   playOutcome(outcome: MoveOutcome): void {
     if (!outcome.moved) return
+    // `killAll` huỷ tween TẠI CHỖ và không chạy `onComplete`, nên phải chốt trạng
+    // thái cuối: không thì tile đang trượt dở nằm lơ lửng giữa hai ô (nước này nó
+    // bị chặn nên không có slide nào đặt lại), tile đang spawn kẹt ở scale 0, tile
+    // đang pop kẹt ở 1.18. Chốt TRƯỚC vòng `slides` để nước mới còn khởi hành từ
+    // đúng `from` thay vì từ toạ độ dở dang của nước trước.
     this.#abortTweens()
+    this.#settle()
 
     for (const slide of outcome.slides) {
       const node = this.#nodes.get(slide.id)
@@ -168,7 +189,7 @@ export class BoardScene extends Phaser.Scene {
       // Vị trí LOGIC chốt ngay, hình ảnh đuổi theo bằng tween. Nhờ vậy một lần
       // resize giữa lúc bay vẫn đặt được tile về đúng ô của layout mới.
       node.at = slide.to
-      const to = this.#center(slide.to)
+      const to = cellCenter(this.#layout, slide.to)
       if (this.#reducedMotion) {
         node.container.setPosition(to.x, to.y)
       } else {
@@ -198,11 +219,19 @@ export class BoardScene extends Phaser.Scene {
         if (survivor.at === null || !samePos(survivor.at, merge.at)) {
           this.#place(survivor, merge.at)
         }
-        survivor.container.setScale(1)
+        survivor.container.setScale(1).setAlpha(1)
         if (!this.#reducedMotion) {
           this.tweens.add({
-            targets: survivor.container,
+            // §B5: "Merge pop scales the tile, NOT the numeral". Container chứa
+            // CẢ numeral, nên đích phải là nền — phóng to một `Text` đã
+            // `setResolution` còn làm chữ được lấy mẫu lại ở tỉ lệ lẻ ⇒ nhoè
+            // suốt 200 ms.
+            targets: survivor.background,
             scale: POP_SCALE,
+            // §B5: pop 200 ms BẮT ĐẦU sau khi slide đáp (t = 100 ms), đỉnh ở
+            // t = 200 ms. Không delay thì pop đỉnh đúng lúc tile tới và kết thúc
+            // sớm 100 ms, trùng khít lúc tile bị hút còn đang trượt vào.
+            delay: DUR_SLIDE,
             duration: DUR_POP / 2,
             yoyo: true,
             ease: 'Sine.easeInOut',
@@ -212,7 +241,7 @@ export class BoardScene extends Phaser.Scene {
 
       if (absorbed !== undefined) {
         absorbed.at = merge.at
-        const at = this.#center(merge.at)
+        const at = cellCenter(this.#layout, merge.at)
         if (this.#reducedMotion) {
           this.#release(merge.id)
         } else {
@@ -276,7 +305,7 @@ export class BoardScene extends Phaser.Scene {
     g.fillRoundedRect(l.boardX, l.boardY, l.boardSide, l.boardSide, BOARD_RADIUS)
     for (let row = 0; row < SIZE; row++) {
       for (let col = 0; col < SIZE; col++) {
-        const c = this.#center({ row, col })
+        const c = cellCenter(this.#layout, { row, col })
         g.fillStyle(this.#theme.slot, 1)
         g.fillRoundedRect(
           c.x - l.cell / 2,
@@ -293,19 +322,9 @@ export class BoardScene extends Phaser.Scene {
     this.#boardLayer.sendToBack(g)
   }
 
-  /** Tâm của một ô, toạ độ game. */
-  #center(at: Pos): { x: number; y: number } {
-    const l = this.#layout
-    const step = l.cell + l.gap
-    return {
-      x: l.boardX + l.gap + l.cell / 2 + at.col * step,
-      y: l.boardY + l.gap + l.cell / 2 + at.row * step,
-    }
-  }
-
   #place(node: TileNode, at: Pos): void {
     node.at = at
-    const c = this.#center(at)
+    const c = cellCenter(this.#layout, at)
     node.container.setPosition(c.x, c.y)
   }
 
@@ -375,16 +394,18 @@ export class BoardScene extends Phaser.Scene {
 
   /**
    * Chốt hiển thị về ĐÚNG trạng thái cuối: mọi tile sống nằm ở ô logic của nó,
-   * cỡ 1, alpha 1.
+   * nền và container đều cỡ 1, alpha 1.
    *
    * Gọi ngay sau `#abortTweens()` vì tween bị huỷ KHÔNG chạy `onComplete`:
    * không chốt thì tile đang spawn dở kẹt ở scale 0 (vô hình vĩnh viễn) và tile
    * đang bay dở đậu lại ở toạ độ của layout cũ (§A4: re-layout on resize keeping
-   * state là MUST).
+   * state là MUST). Nền cũng phải đặt lại vì §B5 cho pop nhắm vào nền: một pop
+   * bị huỷ giữa chừng để lại nền phình 1.18.
    */
   #settle(): void {
     for (const node of this.#nodes.values()) {
       if (node.at !== null) this.#place(node, node.at)
+      node.background.setScale(1)
       node.container.setScale(1).setAlpha(1)
       this.#size(node)
     }

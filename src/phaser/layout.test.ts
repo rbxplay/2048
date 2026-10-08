@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeLayout, type Layout } from './layout'
+import { cellCenter, computeLayout, type Layout } from './layout'
 
 /** Chiều cao HUD theo §B3:144 `clamp(48px, 9vmin, 72px)` — 9vmin = 0.09 × cạnh NGẮN. */
 const hudHeightOf = (l: Layout) => Math.min(72, Math.max(48, 0.09 * Math.min(l.width, l.height)))
@@ -176,5 +176,89 @@ describe('computeLayout — hudHeight theo §B3:144 (R7)', () => {
     // ra 36 → sàn 48; ca 375×667 là ca bắt được lỗi.
     expect(hudHeightAt(375, 667)).toBeCloseTo(48, 6)
     expect(hudHeightAt(375, 667)).not.toBeCloseTo(667 * 0.09, 1)
+  })
+})
+
+describe('cellCenter — tâm ô, hình học mà §A4 (re-layout) dựa vào', () => {
+  it('tâm ô (0,0) cách mép board đúng gap + nửa ô', () => {
+    const l = computeLayout(320, 568)
+    expect(cellCenter(l, { row: 0, col: 0 })).toEqual({
+      x: l.boardX + l.gap + l.cell / 2,
+      y: l.boardY + l.gap + l.cell / 2,
+    })
+  })
+
+  it('bước giữa hai ô kề nhau là cell + gap, đúng cả hai trục', () => {
+    const l = computeLayout(400, 800)
+    const a = cellCenter(l, { row: 1, col: 2 })
+    const right = cellCenter(l, { row: 1, col: 3 })
+    const down = cellCenter(l, { row: 2, col: 2 })
+    expect(right.x - a.x).toBeCloseTo(l.cell + l.gap, 6)
+    expect(right.y).toBeCloseTo(a.y, 6)
+    expect(down.y - a.y).toBeCloseTo(l.cell + l.gap, 6)
+    expect(down.x).toBeCloseTo(a.x, 6)
+  })
+
+  it('lề trái bằng lề phải, và bằng gap', () => {
+    const l = computeLayout(400, 800)
+    const first = cellCenter(l, { row: 0, col: 0 })
+    const last = cellCenter(l, { row: 3, col: 3 })
+    expect(first.x - l.cell / 2 - l.boardX).toBeCloseTo(l.gap, 6)
+    expect(last.y + l.cell / 2 - l.boardY).toBeCloseTo(l.boardSide - l.gap, 6)
+    expect(l.boardX + l.boardSide - (last.x + l.cell / 2)).toBeCloseTo(l.gap, 6)
+    expect(l.boardY + l.boardSide - (last.y + l.cell / 2)).toBeCloseTo(l.gap, 6)
+  })
+
+  it.each([
+    [320, 568],
+    [375, 667],
+    [800, 900],
+    [1024, 768],
+    [1920, 1080],
+  ])('%i×%i: cả 16 ô nằm trọn trong mặt board', (w, h) => {
+    const l = computeLayout(w!, h!)
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        const c = cellCenter(l, { row, col })
+        expect(c.x - l.cell / 2).toBeGreaterThanOrEqual(l.boardX + l.gap - 0.001)
+        expect(c.y - l.cell / 2).toBeGreaterThanOrEqual(l.boardY + l.gap - 0.001)
+        expect(c.x + l.cell / 2).toBeLessThanOrEqual(l.boardX + l.boardSide - l.gap + 0.001)
+        expect(c.y + l.cell / 2).toBeLessThanOrEqual(l.boardY + l.boardSide - l.gap + 0.001)
+      }
+    }
+  })
+
+  // Review Focus 4: tile đang bay dở mà gặp resize thì phải đáp vào ĐÚNG ô của
+  // layout MỚI. Điều đó chỉ đúng nếu toạ độ là hàm thuần của (layout, ô) — không
+  // tích luỹ sai số, không dính toạ độ của layout cũ.
+  it('§A4 re-layout: toạ độ tính lại theo layout mới, không dính layout cũ', () => {
+    const pos = { row: 3, col: 3 }
+    const before = computeLayout(320, 568)
+    const after = computeLayout(768, 1024)
+    const stale = cellCenter(before, pos)
+    const fresh = cellCenter(after, pos)
+    // Toạ độ cũ nằm ngoài board mới — dùng lại nó là tile đáp hụt ra ngoài.
+    expect(fresh.x - stale.x).toBeGreaterThan(1)
+    expect(fresh.x + after.cell / 2).toBeLessThanOrEqual(after.boardX + after.boardSide - after.gap + 0.001)
+    expect(fresh.y + after.cell / 2).toBeLessThanOrEqual(after.boardY + after.boardSide - after.gap + 0.001)
+    // Cùng ô logic ⇒ cùng vị trí TƯƠNG ĐỐI trong board. Không thể bằng NHAU
+    // tuyệt đối: `gap` làm tròn về px nguyên (§B3) nên tỉ lệ `gap / boardSide`
+    // hơi khác giữa hai layout. Sai số thật ở cặp này ~8e-5; chặn 0.005 vẫn đủ
+    // chặt để bắt công thức sai (bỏ số hạng `gap` lệch ~0.03, bỏ bước ô ~0.25).
+    const rel = (l: Layout, c: { x: number; y: number }) => ({
+      x: (c.x - l.boardX) / l.boardSide,
+      y: (c.y - l.boardY) / l.boardSide,
+    })
+    expect(Math.abs(rel(after, fresh).x - rel(before, stale).x)).toBeLessThan(0.005)
+    expect(Math.abs(rel(after, fresh).y - rel(before, stale).y)).toBeLessThan(0.005)
+  })
+
+  it('viewport cực đoan vẫn cho toạ độ hữu hạn', () => {
+    for (const [w, h] of [[0, 0], [Number.NaN, Number.NaN], [100_000, 100_000], [1920, 400]]) {
+      const l = computeLayout(w!, h!)
+      const c = cellCenter(l, { row: 3, col: 3 })
+      expect(Number.isFinite(c.x), `${w}×${h}`).toBe(true)
+      expect(Number.isFinite(c.y), `${w}×${h}`).toBe(true)
+    }
   })
 })

@@ -1,3 +1,5 @@
+import type { Pos } from '../game/board'
+
 export type Layout = {
   width: number
   height: number
@@ -80,5 +82,20 @@ export function computeLayout(width: number, height: number): Layout {
     hudY,
     // Đáy màn hình khi lọt; nếu không thì ngay dưới board — bất biến luôn giữ.
     dpadY: Math.max(boardY + boardSide, h - DPAD_BLOCK),
+  }
+}
+
+/**
+ * Tâm của một ô, toạ độ game. HÀM THUẦN, cùng lý do `computeLayout` ở đây chứ
+ * không nằm trong scene: §A4 bắt "re-layout on resize keeping state" là MUST, và
+ * đó chính là chuyện tile đang bay dở phải đáp vào ĐÚNG ô của layout MỚI. Đặt
+ * hình học ở module thuần thì bất biến ấy kiểm được bằng test, thay vì kiểm bằng
+ * mắt trong một scene mà jsdom không nạp nổi.
+ */
+export function cellCenter(layout: Layout, pos: Pos): { x: number; y: number } {
+  const step = layout.cell + layout.gap
+  return {
+    x: layout.boardX + layout.gap + layout.cell / 2 + pos.col * step,
+    y: layout.boardY + layout.gap + layout.cell / 2 + pos.row * step,
   }
 }
