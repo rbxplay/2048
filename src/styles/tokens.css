@@ -1,8 +1,8 @@
 /* SINH TỰ ĐỘNG bởi scripts/gen-tokens.mjs — đừng sửa tay.
-   Nguồn sự thật là src/theme/palette.ts. Giá trị lấy từ §B11 Design System. */
+   Nguồn sự thật là src/theme/palette.ts. Nội dung theo §B11 Design System. */
 :root{
   --page:#FBF6EC;
-  --board:#B9A894;
+  --surface-board:#B9A894;
   --slot:#D2C6B5;
   --text:#2A1C0C;
   --text-muted:#5B4A38;
@@ -13,22 +13,100 @@
   --danger:#B3261E;
   --focus:#1B6EF3;
   --t2:#F1E8E0;
+  --t2-fg:#2A1C0C;
   --t4:#E8DBC4;
+  --t4-fg:#2A1C0C;
   --t8:#F4C19C;
+  --t8-fg:#2A1C0C;
   --t16:#F6A581;
+  --t16-fg:#2A1C0C;
   --t32:#F6836A;
+  --t32-fg:#2A1C0C;
   --t64:#C54A2D;
+  --t64-fg:#FFF8EE;
   --t128:#B34120;
+  --t128-fg:#FFF8EE;
   --t256:#A43519;
+  --t256-fg:#FFF8EE;
   --t512:#912A1D;
+  --t512-fg:#FFF8EE;
   --t1024:#7A2531;
+  --t1024-fg:#FFF8EE;
   --t2048:#60223F;
+  --t2048-fg:#FFF8EE;
   --t4096:#442142;
+  --t4096-fg:#FFF8EE;
   --t8192:#271D44;
+  --t8192-fg:#FFF8EE;
   --board:clamp(280px, min(92vmin, 560px), 560px);
   --gap:calc(var(--board) * 0.03);
   --cell:calc((var(--board) - 5 * var(--gap)) / 4);
+  --radius-slot:calc(var(--cell) * 0.06);
   --radius-tile:calc(var(--cell) * 0.06);
+  --radius-card:16px;
+  --hairline-light:1px solid rgba(42,28,12,.18);
+  --hairline-dark:1px solid rgba(255,248,238,.22);
+  --shadow-tile:0 1px 0 rgba(42,28,12,.10), 0 2px 6px rgba(42,28,12,.08);
+  --shadow-tile-high:0 2px 0 rgba(0,0,0,.18), 0 6px 18px rgba(0,0,0,.22);
+  --shadow-float:0 8px 28px rgba(0,0,0,.28);
+  --dur-slide:100ms;
+  --dur-appear:200ms;
+  --dur-pop:200ms;
+  --dur-badge:600ms;
+  --dur-overlay:800ms;
+  --delay-appear:100ms;
+  --ease-standard:cubic-bezier(.25,.1,.25,1);
+  --font:"2048 Digits", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-[data-theme="dark"]{--page:#17161A;--text:#F2EDE4;--text-muted:#B9B2A6;--focus:#8AB4F8;--board:#2A2730;--slot:#332F3A;}
-[data-theme="contrast"]{--page:#000;--text:#FFF;--board:#000;--slot:#111;--focus:#FFFF00;}
+@media (prefers-reduced-motion: reduce){
+  :root{
+  --dur-slide:0ms;
+  --dur-pop:0ms;
+  --dur-appear:120ms;
+  --dur-badge:0ms;
+  --dur-overlay:200ms;
+  --delay-appear:0ms;
+  }
+}
+[data-theme="dark"]{
+  --page:#17161A;
+  --text:#F2EDE4;
+  --text-muted:#B9B2A6;
+  --focus:#8AB4F8;
+  --surface-board:#2A2730;
+  --slot:#332F3A;
+}
+[data-theme="contrast"]{
+  --page:#000000;
+  --text:#FFFFFF;
+  --text-muted:#CCCCCC;
+  --focus:#FFFF00;
+  --surface-board:#000000;
+  --slot:#111111;
+  --t2:#FFFFFF;
+  --t2-fg:#000000;
+  --t4:#FFFFFF;
+  --t4-fg:#000000;
+  --t8:#FFFFFF;
+  --t8-fg:#000000;
+  --t16:#FFFFFF;
+  --t16-fg:#000000;
+  --t32:#FFFFFF;
+  --t32-fg:#000000;
+  --t64:#FFFFFF;
+  --t64-fg:#000000;
+  --t128:#FFFFFF;
+  --t128-fg:#000000;
+  --t256:#FFFFFF;
+  --t256-fg:#000000;
+  --t512:#FFFFFF;
+  --t512-fg:#000000;
+  --t1024:#FFFFFF;
+  --t1024-fg:#000000;
+  --t2048:#FFFFFF;
+  --t2048-fg:#000000;
+  --t4096:#FFFFFF;
+  --t4096-fg:#000000;
+  --t8192:#FFFFFF;
+  --t8192-fg:#000000;
+}
