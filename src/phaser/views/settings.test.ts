@@ -335,6 +335,22 @@ function cardFace(s: FakeScene): FakeGO | undefined {
     .find((o) => o.argOf('fillRoundedRect', 4) === 16 && o.fillAlpha === 1)
 }
 
+/**
+ * Phát sự kiện `drag` ĐÚNG ngữ nghĩa Phaser.
+ *
+ * Tham số thứ hai của sự kiện `drag` **không phải** toạ độ con trỏ: nó là vị trí
+ * của CHÍNH đối tượng đang bị kéo. `InputPlugin.processDragMoveEvent` chốt lúc
+ * bắt đầu kéo `input.dragX = pointer.x - gameObject.x`, rồi mỗi lần di chuyển
+ * phát ra `dragX = pointer.x - input.dragX`, tức
+ * `gameObject.x + (pointer.x - downX)`.
+ *
+ * Bộ mô phỏng phải tái tạo đúng công thức đó, nếu không thì test sẽ mã hoá một
+ * giả định sai và bảo vệ chính cái lỗi nó định bắt.
+ */
+function emitPhaserDrag(hit: FakeGO, pointerX: number, downX: number): void {
+  hit.emit('drag', { x: pointerX }, hit.x + (pointerX - downX))
+}
+
 // ---------------------------------------------------------------------------
 // Hàm thuần: quy đổi vị trí con trỏ → mức âm lượng
 // ---------------------------------------------------------------------------
@@ -557,12 +573,46 @@ describe('createSettings — slider SFX (§A9: chỉ có slider, không mute t�
     panel.open(baseSave, () => {})
     const hit = sliderTrack(s)
     const left = (hit?.x ?? 0) - (hit?.width ?? 0) / 2
+    const w = hit?.width ?? 0
 
-    hit?.emit('drag', { x: 0 }, left + (hit?.width ?? 0) * 0.33)
+    emitPhaserDrag(hit!, left + w * 0.33, left + w * 0.3)
     expect(patches.at(-1)?.sfxVolume).toBe(0.35)
 
-    hit?.emit('drag', { x: 0 }, Number.NaN)
+    emitPhaserDrag(hit!, left - 500, left)
     expect(patches.at(-1)?.sfxVolume).toBe(0)
+
+    emitPhaserDrag(hit!, left + w + 500, left)
+    expect(patches.at(-1)?.sfxVolume).toBe(1)
+
+    hit?.emit('drag', { x: Number.NaN }, Number.NaN)
+    expect(patches.at(-1)?.sfxVolume).toBe(0)
+  })
+
+  it('lần di chuyển ĐẦU không nhảy: bám vị trí con trỏ, không bám dragX', () => {
+    const { s, panel, patches } = makePanel()
+    panel.open({ ...baseSave, sfxVolume: 0 }, () => {})
+    const hit = sliderTrack(s)
+    const left = (hit?.x ?? 0) - (hit?.width ?? 0) / 2
+    const w = hit?.width ?? 0
+    const knob = (): FakeGO | undefined => s.added.find((o) => o.kind === 'circle')
+
+    // Bấm ở một điểm bất kỳ trên dải rồi kéo. Ô kéo nằm GIỮA dải (x = left + 100),
+    // nên nếu ai lấy thẳng `dragX` làm toạ độ tuyệt đối thì mọi ca dưới đây đều
+    // cho ~0.5 — âm lượng nhảy về giữa rãnh ngay lần di chuyển đầu.
+    const cases: ReadonlyArray<readonly [number, number]> = [
+      [0.05, 0.05],
+      [0.2, 0.25],
+      [0.8, 0.85],
+      [1, 1],
+    ]
+    for (const [down, move] of cases) {
+      hit?.emit('pointerdown', { x: left + w * down })
+      expect(patches.at(-1)?.sfxVolume, `bấm ở ${down}`).toBe(down)
+
+      emitPhaserDrag(hit!, left + w * move, left + w * down)
+      expect(patches.at(-1)?.sfxVolume, `bấm ${down} kéo tới ${move}`).toBe(move)
+      expect(knob()?.x, `con trượt ở ${move}`).toBeCloseTo(left + w * move)
+    }
   })
 
   it('open() đặt con trượt đúng theo sfxVolume hiện tại', () => {

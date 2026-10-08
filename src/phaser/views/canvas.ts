@@ -1,19 +1,29 @@
 import type Phaser from 'phaser'
 import { hexToInt, SHADOW_BASE_HEX } from '../../theme/palette'
-import { CARD_RADIUS, SHADOW_DY } from './dialogs'
 
 /**
  * Tiện ích vẽ dùng chung cho các view trong canvas.
  *
+ * Đây là **module LÁ**: nó không nhập gì từ các view anh em. Hướng phụ thuộc luôn
+ * là `views/*` → `canvas.ts`, không bao giờ ngược lại — nếu không thì chính nó
+ * chặn việc di trú mà nó mở đường, và mọi view muốn dùng chung lại phải kéo theo
+ * cả cây phụ thuộc của view khác.
+ *
  * `FONT_STACK`, một hàm `hex` cục bộ và một `clamp` cục bộ đang bị chép ba lần ở
  * `scenes/Board.ts`, `views/hud.ts` và `views/dialogs.ts` — Task 12 đã ghi lại
  * khoản nợ đó. Tệp này KHÔNG thêm bản sao thứ tư: nó là chỗ ở đầu tiên cho phần
- * dùng chung, và ba bản cũ vẫn nguyên vì gộp chúng lại phải sửa tệp của ba task
- * khác. Việc di trú ba bản cũ là một task riêng.
+ * dùng chung. Ba bản cũ chưa gộp vì việc đó phải sửa tệp của ba task khác; di
+ * trú chúng là một task riêng.
  *
- * Ở đây chỉ có thứ mà view mới thật sự cần; không gom `clamp` vào vì tệp này
- * không dùng tới nó.
+ * Ở đây chỉ có thứ mà các view thật sự cần; không gom `clamp` vào vì chưa view
+ * nào dùng tới nó qua đường này.
  */
+
+/** §B11:285 `--radius-card:16px`. Bán kính bo góc card của mọi overlay (§B8). */
+export const CARD_RADIUS = 16
+
+/** §B11:291 `--shadow-float: 0 8px 28px rgba(0,0,0,.28)` — quãng đổ xuống. */
+export const SHADOW_DY = 8
 
 /**
  * §B2: một font duy nhất, WOFF2 subset, nhúng trong bundle. Không CDN.

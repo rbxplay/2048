@@ -3,6 +3,7 @@ import { formatNumber, type Locale, type Strings } from '../../i18n'
 import { DARK_HEX, hexToInt, SHADOW_BASE_HEX } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
+import { CARD_RADIUS, SHADOW_DY } from './canvas'
 
 export type DialogKind = 'win' | 'gameover'
 /**
@@ -41,10 +42,13 @@ const BTN_GAP = 12
 const CARD_PAD = 20
 export const DIALOG_MAX_W = 420
 
-/** §B11:285 `--radius-card:16px`. */
-export const CARD_RADIUS = 16
-/** §B11:291 `--shadow-float: 0 8px 28px rgba(0,0,0,.28)` — quãng đổ xuống. */
-export const SHADOW_DY = 8
+/**
+ * §B11:285 `--radius-card:16px` và §B11:291 `--shadow-float: 0 8px 28px
+ * rgba(0,0,0,.28)` — quãng đổ xuống. Hai hằng này nay định nghĩa ở `canvas.ts`
+ * (module lá dùng chung); ở đây chỉ nhập lại và xuất tiếp, giữ nguyên đường dẫn
+ * nhập cũ cho `views.test.ts`. Hành vi của tệp này không đổi.
+ */
+export { CARD_RADIUS, SHADOW_DY }
 /**
  * `Graphics` không vẽ được bóng nhoè, nên `0 8px 28px` được XẤP XỈ bằng ba vòng
  * cùng tâm, nở dần và nhạt dần. Tổng alpha ở lõi ≈ 0.28, đúng độ đậm của token.

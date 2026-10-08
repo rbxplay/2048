@@ -4,13 +4,8 @@ import type { Strings } from '../../i18n'
 import { DARK_HEX, hexToInt } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-import { crisp, drawFloatShadow, FONT_STACK, hexFromInt } from './canvas'
-import {
-  CARD_RADIUS,
-  dialogCardWidth,
-  OVERLAY_MS,
-  OVERLAY_REDUCED_MS,
-} from './dialogs'
+import { CARD_RADIUS, crisp, drawFloatShadow, FONT_STACK, hexFromInt } from './canvas'
+import { dialogCardWidth, OVERLAY_MS, OVERLAY_REDUCED_MS } from './dialogs'
 import { hudLabelSize } from './hud'
 
 /**
@@ -340,8 +335,12 @@ export function createSettings(
     opts.onChange({ sfxVolume: volume })
   }
 
+  // Toạ độ dùng ở CẢ HAI sự kiện là `pointer.x`, KHÔNG phải tham số `dragX`.
+  // `dragX` của Phaser là vị trí của CHÍNH ô kéo (`gameObject.x + quãng đã đi`),
+  // không phải toạ độ con trỏ; ô kéo nằm giữa rãnh nên lấy `dragX` làm toạ độ
+  // tuyệt đối sẽ cho ~0.5 ngay lần di chuyển đầu, bất kể người chơi bấm ở đâu.
   sliderHit.on('pointerdown', (p: Phaser.Input.Pointer) => setVolumeFromX(p.x))
-  sliderHit.on('drag', (_p: Phaser.Input.Pointer, dragX: number) => setVolumeFromX(dragX))
+  sliderHit.on('drag', (p: Phaser.Input.Pointer) => setVolumeFromX(p.x))
 
   hapticsHit.on('pointerup', () => {
     if (state === null) return
