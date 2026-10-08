@@ -250,6 +250,49 @@ $ python3 scripts/playables_preflight.py ../RockPaperScissor/dist --src ../RockP
 A13 #14 yêu cầu lệnh này **exit 0**. RPS không đạt. Nếu ta sao chép RPS nguyên trạng, ta thừa
 hưởng cả năm lỗi này.
 
+> **Amend 2026-10-08 — A13 #14 KHÔNG đạt nguyên văn, và đây là ghi nhận có bằng chứng, không phải
+> chỗ sửa lặng lẽ.**
+>
+> Trạng thái cuối: `check:preflight` **vẫn exit 1**, còn đúng **2 mục MUST** — `non-sdk-storage`
+> (`localStorage` ×4) và `analytics-sdk` (`amplitude` ×8). **Không mục REQUIRED nào còn thiếu**:
+> cả năm call life-cycle ở trên (`game-ready`, `load-data`, `save-data`, `audio-check`,
+> `pause-resume`) nay đều có trong bundle.
+>
+> Cả hai mục đều đến từ **vendor, không từ code dự án**: số lần xuất hiện trong `dist/index.html`
+> trùng khít với `node_modules/phaser/dist/phaser.min.js` (4 và 8), còn `src/` không có lần nào.
+> Đo trên Phaser 4.2.1:
+> - `localStorage` của Phaser là **feature-detect, không phải ghi**: `setItem` **0**, `removeItem`
+>   **0**, `sessionStorage` **0**, `indexedDB` **0**, `document.cookie` **0**. Tham chiếu duy nhất
+>   trong mã là `try{a.localStorage=!!localStorage.getItem}catch(t){a.localStorage=!1}`; các lần
+>   khác là khai báo thuộc tính trong object mặc định của `Device.Features`.
+> - `amplitude` ×8 là **false positive** của regex `analytics-sdk`: nó đến từ
+>   `gameobjects/spritegpulayer/SpriteGPULayer.js`, một class game **không dùng**, chỉ bị kéo vào
+>   vì `import Phaser from 'phaser'` lấy cả namespace.
+> - `visibilitychange` ×2 **không** khớp regex sau minify (`addEventListener(e, …)`, đối số là biến).
+>
+> **Vì sao không cắt bỏ được:** một điều tra read-only đã kết luận **không tồn tại đường hợp lệ**.
+> Tree-shaking bằng 0 trên cả năm entry khác nhau (default / named / chỉ `Game` / chỉ `Scene` /
+> chỉ `GameObjects`) — đều ra ~1.76 MB, lệch dưới 64 byte. Không flag build nào trong bảy flag
+> (`CANVAS_RENDERER`, `WEBGL_RENDERER`, `WEBGL_DEBUG`, `FEATURE_SOUND`, `EXPERIMENTAL`,
+> `PLUGIN_CAMERA3D`, `PLUGIN_FBINSTANT`) gate hai module gây lỗi. Mọi entry hẹp hơn kể cả
+> `phaser-core.js` đều kéo `Game`. Đường duy nhất tới exit 0 là **đổi tên token trong artifact đã
+> build** — đã chứng minh chạy được, nhưng bị **bác bỏ**: nó làm artifact không khớp cổng kiểm
+> trong khi hành vi không đổi, tức qua cổng bằng cách giấu chứ không bằng cách sửa.
+>
+> **Cách đọc lại (người quyết định: chủ dự án).** Điều khoản cert nguyên văn (Cloud saves §4) là
+> *"Game MUST NOT use any other mechanism to save user progress"* — cấm **hành vi** lưu tiến trình,
+> không cấm việc tên API xuất hiện trong bundle. Game chỉ lưu qua `saveData` và **không ghi gì**
+> vào bộ nhớ trình duyệt, nên điều khoản được thoả trong khi cổng grep vẫn đỏ. Nếu tiêu chí được
+> đọc là "bundle chứa chữ `localStorage` thì loại" thì gần như mọi thư viện JS đều bị loại.
+> **Hệ quả: A13 #14 như viết KHÔNG đạt**, và các số đo trên phải đi kèm hồ sơ nộp.
+>
+> **Mục §6 thì có thật và đã xử.** `Phaser.Core.VisibilityHandler` được cài tự động, không có
+> config để tắt. Đo được: lật visibility vẫn cho **36 frame/600 ms** — handler nội bộ của Phaser
+> **không** dừng được vòng lặp (vì `TimeStep.pause()` chỉ ghi `_pauseTime` mà không ai đọc), nên nó
+> không tạo đường pause thứ hai có ảnh hưởng state; chỉ `onPause` của SDK mới cho **0 frame**. Đã
+> đặt `autoFocus: false` để game không giật focus của trang, và pause/resume chạy **chỉ** qua SDK
+> với đủ bốn vế: vòng lặp, âm thanh, ghi save, và input/UI. Không patch vendor.
+
 ### 5a. Mock adapter lọt vào bundle production
 
 `MockPlatform` của RPS dùng `localStorage`. Vì nó được import tĩnh trong `select.ts`, nó bị
