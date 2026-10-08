@@ -28,26 +28,87 @@ export function mergeFrequency(value: number, base: number = MERGE_BASE_HZ): num
   return base * 2 ** (semitones / 12)
 }
 
-type Envelope = { wave: OscillatorType; hz: number; seconds: number; hzTo?: number }
+/**
+ * Một nốt của một âm.
+ *
+ * §10.1 không mô tả mỗi âm bằng một oscillator: `merge` là "sine + hài bậc 2"
+ * (2 nốt), `win` là "hợp âm 3 nốt đi lên" (3 nốt), `over` là "hai nốt đi xuống"
+ * (2 nốt). Sáu âm vì thế dựng 10 oscillator, không phải 6.
+ */
+type Note = {
+  wave: OscillatorType
+  /** Tần số nốt nền, Hz. Với `sfx.merge` đây là tần số CHƯA nhân tỉ lệ tile. */
+  hz: number
+  /** Bội của nốt nền trong cùng một âm — hài bậc 2 là `2`. */
+  partial?: number
+  /** Quét tần số tới đây, kết thúc ở cuối nốt (move/invalid quét xuống). */
+  hzTo?: number
+  /** Thời lượng của chính nốt này. */
+  seconds: number
+  /** Trễ bắt đầu, cho nốt NỐI TIẾP (over) — nốt rời, không phải glissando. */
+  delay?: number
+  /**
+   * Phần của gain token (§B7) mà nốt này mang. Tổng `weight` trong một âm bằng
+   * 1, để gain token vẫn là ĐỈNH CỦA CẢ ÂM: ba nốt hợp âm cùng mang .8 sẽ to
+   * gấp ba và méo tiếng.
+   */
+  weight: number
+}
 
-/** Hình dạng từng âm: sóng, tần số, thời lượng. Gain lấy từ SFX_GAINS. */
-const SHAPES: Record<SfxName, Envelope> = {
-  move: { wave: 'triangle', hz: 330, hzTo: 260, seconds: 0.07 },
-  merge: { wave: 'sine', hz: MERGE_BASE_HZ, seconds: 0.12 },
-  spawn: { wave: 'triangle', hz: 440, seconds: 0.06 },
-  invalid: { wave: 'square', hz: 150, hzTo: 110, seconds: 0.08 },
-  win: { wave: 'sine', hz: 523.25, hzTo: 783.99, seconds: 1.2 },
-  over: { wave: 'sine', hz: 392, hzTo: 196, seconds: 1.0 },
+/**
+ * Hình dạng từng âm — bảng §10.1, mỗi dòng là danh sách nốt.
+ *
+ * Thời lượng của cả âm là `max(delay + seconds)` trên các nốt, và phải bằng cột
+ * "Thời lượng" của §10.1; test giữ bản sao của bảng đó và đối chiếu.
+ */
+const NOTES: Record<SfxName, readonly Note[]> = {
+  // triangle, quét nhẹ xuống — 70 ms.
+  move: [{ wave: 'triangle', hz: 330, hzTo: 260, seconds: 0.07, weight: 1 }],
+  // sine + hài bậc 2 — 120 ms. Hài nhỏ hơn nốt nền để không phình đỉnh.
+  merge: [
+    { wave: 'sine', hz: MERGE_BASE_HZ, seconds: 0.12, weight: 0.65 },
+    { wave: 'sine', hz: MERGE_BASE_HZ, partial: 2, seconds: 0.12, weight: 0.35 },
+  ],
+  // triangle, gain thấp — 60 ms.
+  spawn: [{ wave: 'triangle', hz: 440, seconds: 0.06, weight: 1 }],
+  // square, giảm nhanh — 80 ms.
+  invalid: [{ wave: 'square', hz: 150, hzTo: 110, seconds: 0.08, weight: 1 }],
+  // Hợp âm 3 nốt đi lên (C5–E5–G5), vang CÙNG LÚC — 1.2 s.
+  win: [
+    { wave: 'sine', hz: 523.25, seconds: 1.2, weight: 0.5 },
+    { wave: 'sine', hz: 659.25, seconds: 1.2, weight: 0.3 },
+    { wave: 'sine', hz: 783.99, seconds: 1.2, weight: 0.2 },
+  ],
+  // Hai nốt đi xuống (G4 rồi G3), NỐI TIẾP — 0,5 s + 0,5 s = 1.0 s.
+  over: [
+    { wave: 'sine', hz: 392, seconds: 0.5, weight: 0.6 },
+    { wave: 'sine', hz: 196, seconds: 0.5, delay: 0.5, weight: 0.4 },
+  ],
 }
 
 export type Sfx = {
-  /** Gọi ở lần input đầu tiên và ở mỗi onResume — rủi ro R1. */
+  /**
+   * Khởi động audio: tạo `AudioContext` nếu chưa có, và resume nếu đang
+   * `suspended`.
+   *
+   * Gọi ở **lúc boot** — §10.3: "Tạo `AudioContext` lúc boot, không chờ user
+   * gesture" — *và* ở lần input đầu tiên, *và* ở mỗi `onResume` (rủi ro R1).
+   * Bỏ lần gọi lúc boot thì âm `spawn` của ván đầu câm vì context chưa tồn tại.
+   */
   unlock(): void
   setVolume(volume: number): void
   setMuted(muted: boolean): void
   play(name: SfxName): void
   playMerge(value: number): void
   destroy(): void
+  /**
+   * Số lỗi WebAudio đã bị nuốt im lặng (§10.3 cấm để audio chặn gameplay).
+   *
+   * §10.3 KHÔNG cho phép nuốt mà không để lại dấu vết: một fixture/thiết bị
+   * thiếu method sẽ làm âm câm trong production mà test "không throw" vẫn xanh.
+   * Chỉ để chẩn đoán và test đọc — không phải bề mặt cho người chơi.
+   */
+  readonly audioFailures: number
 }
 
 export function createSfx(opts: {
@@ -66,6 +127,24 @@ export function createSfx(opts: {
   let ctxFailed = false
   let volume = 0.7
   let muted = false
+  let failures = 0
+  let warned = false
+
+  /**
+   * Ghi nhận một lỗi audio đã bị nuốt, rồi cảnh báo MỘT lần cho mỗi instance.
+   *
+   * Không được ném: hàm này chạy trong chính đường `catch`.
+   */
+  function swallow(): void {
+    failures++
+    if (warned) return
+    warned = true
+    try {
+      console.warn('[audio] WebAudio lỗi — ván đấu tiếp tục, âm thanh có thể câm')
+    } catch {
+      // console cũng có thể bị chặn; chẩn đoán không được phép ném.
+    }
+  }
 
   function context(): AudioContext | null {
     if (ctxFailed) return null
@@ -73,12 +152,15 @@ export function createSfx(opts: {
     try {
       ctx = factory()
       if (ctx === null) {
+        // Thiếu AudioContext (jsdom, môi trường lạ) là bình thường, KHÔNG phải
+        // lỗi — không tính vào `audioFailures`.
         ctxFailed = true
         return null
       }
       return ctx
     } catch {
       ctxFailed = true
+      swallow()
       return null
     }
   }
@@ -88,47 +170,64 @@ export function createSfx(opts: {
     return muted || volume <= 0
   }
 
-  function tone(env: Envelope, peak: number): void {
+  /** Dựng một nốt thành OscillatorNode + GainNode. */
+  function voice(note: Note, soundGain: number): void {
     // Khi YouTube mute thì im lặng TUYỆT ĐỐI: không tạo node nào cả, chứ không
     // phải tạo rồi đặt gain 0 (A9 MUST).
     if (silenced()) return
     const audio = context()
     if (audio === null) return
     try {
-      const now = audio.currentTime
+      const from = audio.currentTime + (note.delay ?? 0)
+      const to = from + note.seconds
       const osc = audio.createOscillator()
       const gain = audio.createGain()
-      osc.type = env.wave
-      osc.frequency.setValueAtTime(env.hz, now)
-      if (env.hzTo !== undefined) {
-        osc.frequency.exponentialRampToValueAtTime(Math.max(1, env.hzTo), now + env.seconds)
+      osc.type = note.wave
+      osc.frequency.setValueAtTime(note.hz, from)
+      if (note.hzTo !== undefined) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(1, note.hzTo), to)
       }
-      gain.gain.setValueAtTime(peak, now)
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + env.seconds)
+      const peak = soundGain * note.weight
+      gain.gain.setValueAtTime(peak, from)
+      gain.gain.exponentialRampToValueAtTime(0.0001, to)
       osc.connect(gain)
       gain.connect(audio.destination)
-      osc.start(now)
-      osc.stop(now + env.seconds + 0.02)
+      osc.start(from)
+      osc.stop(to + 0.02)
     } catch {
-      // Audio lỗi KHÔNG BAO GIỜ được chặn gameplay (§10.3).
+      // Audio lỗi KHÔNG BAO GIỜ được chặn gameplay (§10.3) — nhưng phải đếm.
+      swallow()
+    }
+  }
+
+  /**
+   * Phát toàn bộ nốt của một âm.
+   *
+   * `pitch` là tỉ lệ nhân tần số, chỉ khác 1 với `sfx.merge` (pitch theo giá
+   * trị tile). Nốt nền và hài bậc 2 cùng nhân tỉ lệ đó nên âm vẫn "lên theo
+   * tile" đúng §B7.
+   */
+  function emit(notes: readonly Note[], soundGain: number, pitch: number): void {
+    for (const note of notes) {
+      voice({ ...note, hz: note.hz * (note.partial ?? 1) * pitch }, soundGain)
     }
   }
 
   function play(name: SfxName): void {
-    tone(SHAPES[name], SFX_GAINS[name] * volume)
+    emit(NOTES[name], SFX_GAINS[name] * volume, 1)
   }
 
   function playMerge(value: number): void {
-    tone({ ...SHAPES.merge, hz: mergeFrequency(value) }, SFX_GAINS.merge * volume)
+    emit(NOTES.merge, SFX_GAINS.merge * volume, mergeFrequency(value) / MERGE_BASE_HZ)
   }
 
   function unlock(): void {
     const audio = context()
     if (audio === null) return
     try {
-      if (audio.state === 'suspended') void audio.resume().catch(() => {})
+      if (audio.state === 'suspended') void audio.resume().catch(() => swallow())
     } catch {
-      // bỏ qua
+      swallow()
     }
   }
 
@@ -144,12 +243,22 @@ export function createSfx(opts: {
     try {
       // `.catch` giống đường resume ở `unlock`: `close()` trả Promise, mà một
       // rejection không ai bắt sẽ thành lỗi console — audio không được gây ồn.
-      void ctx?.close().catch(() => {})
+      void ctx?.close().catch(() => swallow())
     } catch {
-      // bỏ qua
+      swallow()
     }
     ctx = null
   }
 
-  return { unlock, setVolume, setMuted, play, playMerge, destroy }
+  return {
+    unlock,
+    setVolume,
+    setMuted,
+    play,
+    playMerge,
+    destroy,
+    get audioFailures(): number {
+      return failures
+    },
+  }
 }
