@@ -404,18 +404,23 @@ export type MoveOutcome = {
   slides: { id: number; from: Pos; to: Pos }[]
   merges: { id: number; at: Pos; value: number }[]           // value = giá trị SAU merge
   spawn: { id: number; at: Pos; value: number } | null
-  reached2048: boolean                                       // lần đầu chạm 2048 trong ván
+  created2048: boolean                                       // nước đi này VỪA tạo ra tile 2048
   over: boolean                                              // hết nước đi
 }
 
-export function applyMove(board: Board, dir: Dir, rng: Rng): MoveOutcome
+export type MoveContext = { rng: Rng; nextId: () => number }
+export function applyMove(board: Board, dir: Dir, ctx: MoveContext): MoveOutcome
 export function spawnTile(board: Board, rng: Rng, nextId: () => number):
   { board: Board; spawn: { id: number; at: Pos; value: number } } | null
 export function canMove(board: Board): boolean
 ```
 
-`rng` tiêm vào ⇒ test được tỉ lệ 90:10 trên 10 000 lần spawn và board cố định, không cần mock
-`Math.random`. Đây là điều kiện để A13 mục 1 kiểm được một cách xác định.
+`rng` và `nextId` tiêm vào qua `MoveContext` ⇒ test được tỉ lệ 90:10 trên 10 000 lần spawn và board
+cố định, không cần mock `Math.random`.
+
+`created2048` nghĩa là **nước đi này vừa tạo ra** tile 2048 — không phải "ván đã từng đạt 2048".
+`applyMove` là hàm thuần nên không biết ván đã thắng chưa; việc mở overlay WIN hay không thuộc về
+`app/session.ts`. Cách này cũng chính xác hơn: thắng chỉ đến từ merge, không bao giờ từ tile sinh ra.
 
 ### 6.3 Thuật toán
 
@@ -436,9 +441,9 @@ applyMove(board, dir, rng):
   moved = (board != snapshot)
   if moved:
       spawn = spawnTile(board, rng)        → 90% 2 / 10% 4
-      reached2048 = vừa xuất hiện tile 2048
+      created2048 = có merge nào tạo ra 2048
       over = not canMove(board)
-  return { board, scoreDelta, moved, slides, merges, spawn, reached2048, over }
+  return { board, scoreDelta, moved, slides, merges, spawn, created2048, over }
 ```
 
 `mergedThisMove` là cờ **cục bộ trong một lần gọi**, không nằm trong `Tile` lưu trữ. Đây là thứ
@@ -451,7 +456,7 @@ applyMove(board, dir, rng):
 | Input hợp lệ có thay đổi | `true` | có | +1 | `+= scoreDelta` | |
 | Input không thay đổi gì | `false` | **không** | **không** | không đổi | §A3, A13 mục 3 |
 | Merge xảy ra | `true` | có | +1 | `+= scoreDelta` | |
-| Vừa tạo tile 2048 | `true` | có | +1 | `+= scoreDelta` | `reached2048 = true`, mở WIN |
+| Vừa tạo tile 2048 | `true` | có | +1 | `+= scoreDelta` | `created2048 = true`, mở WIN |
 | Board đầy, không còn cặp kề bằng nhau | `true`/`false` | theo luật | | | `over = true`, mở GAME OVER |
 | Đang ở WIN/GAME OVER overlay | — | — | — | — | input bị bỏ qua |
 
@@ -462,7 +467,7 @@ applyMove(board, dir, rng):
 ```
 input (pointer drag hoặc bàn phím)
   │
-  ├─ hàng đợi sâu tối đa 1 — giữ cái MỚI NHẤT, bỏ cái cũ
+  ├─ KHÔNG có hàng đợi — xem ghi chú bên dưới
   │
   ▼
 outcome = applyMove(board, dir, rng)
@@ -482,8 +487,11 @@ outcome = applyMove(board, dir, rng)
 thứ khiến các bản clone 2048 desync trên máy chậm: nếu renderer đọc board để quyết định điều gì
 xảy ra tiếp, tốc độ animation sẽ thành một phần của luật chơi.
 
-Hàng đợi sâu 1 giải rủi ro R7: một cái vuốt bị nuốt mất sẽ khiến người chơi thấy game hỏng.
-Luôn phản hồi, không bao giờ bỏ im lặng.
+**Không có hàng đợi input — và đó là chủ ý.** PRD §7 nói "hàng đợi sâu tối đa 1", nhưng hàng đợi chỉ
+cần khi ta gate logic theo animation. Ta không làm vậy: logic áp dụng ngay, tween chạy sau và chỉ đọc
+kết quả. Không có gì để nuốt, nên rủi ro R7 (một cú vuốt bị nuốt im lặng) biến mất **theo cấu trúc**
+chứ không nhờ một cái hàng đợi. Hệ quả phụ có lợi: nhịp chơi giống hệt giữa bản thường và bản
+reduced-motion, đúng yêu cầu §B5.
 
 **Reduced motion:** commit state tức thì, tile hiện bằng fade 120 ms, **không gate input** trên
 animation (§B5). Nhịp chơi phải giống hệt bản thường.
@@ -844,7 +852,7 @@ engine ở lại. Đừng trông vào việc này để tiết kiệm.
 - `2 2 2 2` + trái ⇒ `4 4`, **không** ra `8`
 - nước đi không đổi gì ⇒ `moved === false`, không spawn, không tăng moves
 - merge cộng đúng `scoreDelta`
-- chạm 2048 ⇒ `reached2048 === true`
+- chạm 2048 ⇒ `created2048 === true`
 - `canMove` đúng: board đầy + không cặp kề bằng nhau ⇒ game over
 - slide đúng thứ tự duyệt ngược hướng
 
@@ -943,50 +951,48 @@ hiện muộn sẽ tốn kém.
 ├─ tsconfig.json
 ├─ vite.config.ts
 ├─ .gitignore
-├─ assets/
-│  └─ fonts/
-│     ├─ inter-subset.woff2
-│     └─ LICENSE.txt
+├─ assets/fonts/{inter-subset.woff2, LICENSE.txt}
 ├─ docs/
 │  ├─ PRD.md
 │  ├─ DesignSystem.md
-│  └─ superpowers/specs/2026-10-08-2048-playables-design.md
+│  ├─ verification-report.md
+│  └─ superpowers/{specs,plans}/
 ├─ scripts/
 │  ├─ playables_preflight.py
 │  ├─ check_contrast.py
 │  ├─ check-bundle.mjs
+│  ├─ gen-tokens.mjs        sinh tokens.css từ theme/palette.ts
 │  └─ subset-font.py
 └─ src/
-   ├─ main.ts
-   ├─ game/
-   │  ├─ rules.ts          applyMove, spawnTile, canMove
-   │  ├─ board.ts          Board ↔ BoardData, tạo board đầu
-   │  ├─ persist.ts        SaveData, serialize, parse, migrate
-   │  ├─ rng.ts            Rng, mulberry32
-   │  └─ *.test.ts
-   ├─ platform/
-   │  ├─ types.ts          GamePlatform, withTimeout
-   │  ├─ youtube.ts        adapter ytgame
-   │  ├─ mock.ts           dev-only, store trong bộ nhớ
-   │  ├─ ytgame.d.ts       khai báo type SDK
-   │  ├─ select.ts         chọn platform lúc boot
-   │  └─ *.test.ts
-   ├─ render/
-   │  ├─ board.ts          pool tile, diff, animate
-   │  ├─ hud.ts            score, best, badge +N
-   │  └─ dialogs.ts        win, game over, settings
-   ├─ input/
-   │  ├─ pointer.ts        drag → Dir
-   │  ├─ keyboard.ts       arrows/WASD/Esc
-   │  └─ dpad.ts           4 nút, ẩn sau 3 s
-   ├─ audio/
-   │  └─ sfx.ts            tổng hợp WebAudio
-   ├─ i18n/
-   │  ├─ index.ts
-   │  ├─ en.ts
-   │  └─ vi.ts
-   ├─ styles/
-   │  ├─ tokens.css        §B11 nguyên văn
-   │  └─ app.css
-   └─ smoke.test.ts
-   ```
+   ├─ main.ts               composition root — mỏng, chỉ ghép nối
+   ├─ game/                 THUẦN — không biết Phaser, không biết SDK
+   │  ├─ rng.ts             Rng, mulberry32
+   │  ├─ board.ts           Board ↔ BoardData, tile id, truy vấn
+   │  ├─ rules.ts           applyMove, spawnTile, createStartBoard
+   │  └─ persist.ts         SaveData, serialize, parse, migrate
+   ├─ app/
+   │  ├─ session.ts         state machine của ván, milestone, ưu tiên overlay
+   │  ├─ ads.ts             chính sách interstitial
+   │  └─ haptics.ts
+   ├─ platform/             không biết Phaser
+   │  ├─ types.ts           GamePlatform, withTimeout
+   │  ├─ youtube.ts         adapter ytgame
+   │  ├─ mock.ts            dev-only, store trong bộ nhớ
+   │  ├─ ytgame.d.ts        khai báo type SDK
+   │  └─ select.ts          chọn platform lúc boot
+   ├─ theme/palette.ts      NGUỒN SỰ THẬT của màu
+   ├─ phaser/
+   │  ├─ config.ts          GameConfig, Scale.RESIZE
+   │  ├─ theme.ts           palette → số cho Phaser
+   │  ├─ layout.ts          computeLayout — hàm thuần
+   │  ├─ tileSpec.ts        nhãn và cỡ chữ theo giá trị
+   │  ├─ input.ts           bàn phím
+   │  ├─ scenes/{Boot.ts, Board.ts}
+   │  └─ views/{hud.ts, dialogs.ts, settings.ts, dpad.ts}
+   ├─ a11y/
+   │  ├─ bridge.ts          tầng DOM song song cho screen reader
+   │  └─ bridge.css
+   ├─ audio/sfx.ts          tổng hợp WebAudio, 0 file
+   ├─ i18n/{index.ts, en.ts, vi.ts}
+   └─ styles/tokens.css     SINH RA từ theme/palette.ts
+```
