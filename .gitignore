@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output — bundle được tạo ra, không commit
+dist/
+dist-ssr/
+
+# Cache
+.vite/
+*.tsbuildinfo
+coverage/
+
+# Công cụ orchestration (artifact vận hành, không phải mã nguồn)
+.omc/
+.claude/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Bundle analyzer của Google — báo cáo sinh ra khi chạy
+playable_bundle_analysis_report.txt
+
+# Workspace của skill superpowers (scratch, không commit)
+.superpowers/
