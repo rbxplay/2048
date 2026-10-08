@@ -1,7 +1,7 @@
 # Báo cáo nghiệm thu — Merge 2048
 
 Ngày: 2026-10-08 · Nhánh `feat/2048-playables` · HEAD lúc đo: `f257187` (D1 tồn tại ở `f88e1a5`, sửa ở `b21797f`).
-Phạm vi: Task 19. Lượt đo đầu không sửa mã sản phẩm; mọi lỗi ghi lại. Sau đó D1 được sửa ở `b21797f` (mã + test) và mục QA 4, 5, 7, 10 được kiểm lại; D2, D3 và mục 14 chưa sửa.
+Phạm vi: Task 19. Lượt đo đầu không sửa mã sản phẩm; mọi lỗi ghi lại. Sau đó D1 được sửa ở `b21797f` (mã + test) và mục QA 4, 5, 7, 10 được kiểm lại. Mục 14 được sửa trên nhánh `fix/zoom-200-layout` và kiểm lại trên trình duyệt thật; D2, D3 chưa sửa.
 
 ## Tóm tắt
 
@@ -12,7 +12,7 @@ Phạm vi: Task 19. Lượt đo đầu không sửa mã sản phẩm; mọi lỗ
   (Page Visibility kiểm ở `src/`; listener của Phaser vẫn có trong bundle). Các số trong bảng dưới là số đo của script cũ.
 - Bundle: `dist/index.html` 1 426 044 byte, **gzip -9 = 370 503 byte (361,8 KiB)**, giới hạn 614 400 → **đạt NFR-01**.
 - Request ngoài: chỉ `www.youtube.com` (SDK). Không font, ảnh, analytics.
-- QA §A13 (14 mục): **ĐẠT 13 · KHÔNG ĐẠT 1 (mục 14; mục 4 và 7 đã đạt sau sửa D1) · CHƯA KIỂM 0** (mục 12 chỉ kiểm qua cây a11y, không phải screen reader thật; mục 13 đạt theo thiết kế).
+- QA §A13 (14 mục): **ĐẠT 14 · KHÔNG ĐẠT 0 · CHƯA KIỂM 0** (mục 4 và 7 đạt sau sửa D1; mục 14 KHÔNG ĐẠT ở lần đo đầu, đạt sau khi sửa bố cục — zoom 200 % mô phỏng bằng viewport một nửa, không phải Ctrl+= thật; mục 12 chỉ kiểm qua cây a11y, không phải screen reader thật; mục 13 đạt theo thiết kế).
 - **Lỗi sản phẩm nghiêm trọng (D1): soft-lock sau khi đóng dialog thắng/thua ở chế độ chuyển động mặc định — ĐÃ SỬA ở `b21797f`, kiểm lại trên trình duyệt thật.**
   Xem mục "Lỗi tìm thấy".
 
@@ -98,10 +98,11 @@ Ván ở bước này chơi 200 nước, chưa tới hết nước; ván chơi �
 | 11 | bàn phím chơi hết ván | **ĐẠT** | Chỉ phím mũi tên, từ ván mới tới "Hết nước đi" (161 phím). Quan sát TRƯỚC khi sửa: riêng việc *thoát* dialog bằng bàn phím lỗi (D1); đường thoát đã kiểm lại ở mục 4, 5, 7 sau `b21797f`, còn lượt 161 phím chưa chạy lại. |
 | 12 | screen reader | **ĐẠT qua cây a11y — KHÔNG phải screen reader thật** | Không chạy NVDA/VoiceOver/Orca. Đã kiểm cây a11y của Chromium (`ariaSnapshot`) và DOM: `grid "Bàn cờ 4 nhân 4"`, `aria-rowcount=4`, `aria-colcount=4`, **4** `row` thật × **4** `gridcell` = 16; ô trống đọc "trống", ô có số đọc giá trị; vùng `aria-live="polite" aria-atomic="true"` công bố điểm ("0" rồi "8" sau nước ghi điểm); vùng `aria-live="assertive"` công bố "Bạn đạt 2048!" / "Hết nước đi"; 4 nút di chuyển + Cài đặt + thanh âm lượng, công tắc Rung/Giảm chuyển động, combobox Giao diện đều có tên. **Cần chạy lại bằng screen reader thật trước khi nộp.** |
 | 13 | theme dark và contrast | **ĐẠT** (theo thiết kế; xem ghi chú) | Đổi qua ô `<select>` DOM (không bấm nút trong panel canvas). `light → dark`: nền trang, HUD, mặt bàn, ô trống, D-pad đổi cùng lúc; **tile KHÔNG đổi màu** vì bảng tile (`TILE_HEX`) dùng chung cho light/dark theo thiết kế (`src/theme/palette.ts`, `phaser/theme.ts`). `→ contrast`: **cả 15 tile đổi thành nền trắng/chữ đen cùng một lúc**, nền trang đen. Ảnh: `docs/verification/theme-dark.png`, `theme-contrast.png`. Nếu chủ dự án đọc "mọi tile đổi màu" nghĩa là cả light↔dark, mục này là KHÔNG ĐẠT. |
-| 14 | zoom 200 % | **KHÔNG ĐẠT** | Mô phỏng zoom 200 % bằng viewport một nửa (không phải Ctrl+= thật). 1280×720 → 640×360: bàn cờ và HUD vừa khung nhưng **D-pad bị cắt**, chỉ thấy mép trên nút "↑" (`docs/verification/zoom200-640x360.png`). 520×800 → 260×400: **bàn cờ bị cắt hai bên** (cột 1 và 4 tràn ra ngoài), D-pad chỉ lộ nút "↑" (`zoom200-260x400.png`). Không có thanh cuộn (`scrollWidth/Height` = viewport) nên người dùng không với tới phần bị cắt. |
+| 14 | zoom 200 % | **ĐẠT** (kiểm lại sau khi sửa bố cục; lần đầu KHÔNG ĐẠT) | **Sau sửa** (nhánh `fix/zoom-200-layout`, build production, ytgame giả, vẫn mô phỏng bằng viewport một nửa — **không phải Ctrl+= thật**): ở 640×360, 260×400, 320×568, 384×512, 512×384, 960×540, 1280×720 và 260×360 (viewport tối thiểu cam kết) HUD, board, D-pad nằm trọn trong khung và không đè nhau; 640×360 và 512×384 đặt D-pad bên phải board (board 280 / 304 px), 260×400 co board còn 188 px. Ở mỗi cỡ: 4 nút D-pad canvas bấm chuột được, phím mũi tên chạy, đổi dọc ↔ ngang giữa ván giữ nguyên board (đọc qua cây a11y), dialog thắng / thua và card Cài đặt không bị cắt, D-pad nằm dưới lớp phủ. Lúc chơi không có thanh cuộn (`scrollWidth/Height` = viewport); khi dialog mở thì có — đó là quan sát phụ có từ trước, xem mục 7. Ảnh: `zoom200-640x360-sau-sua.png`, `zoom200-260x400-sau-sua.png`. Giới hạn: ở 260×360 ô chỉ 32 px, nhãn 6 ký tự `16384+` (sàn chữ 11 px) rộng hơn ô vài px. **Lần đo đầu (KHÔNG ĐẠT):** mô phỏng zoom 200 % bằng viewport một nửa (không phải Ctrl+= thật). 1280×720 → 640×360: bàn cờ và HUD vừa khung nhưng **D-pad bị cắt**, chỉ thấy mép trên nút "↑" (`docs/verification/zoom200-640x360.png`). 520×800 → 260×400: **bàn cờ bị cắt hai bên** (cột 1 và 4 tràn ra ngoài), D-pad chỉ lộ nút "↑" (`zoom200-260x400.png`). Không có thanh cuộn (`scrollWidth/Height` = viewport) nên người dùng không với tới phần bị cắt. |
 
-**Chốt số:** ĐẠT = mục 1–13 (**13**; mục 4 và 7 đạt sau khi sửa D1 ở `b21797f`, lần đo đầu là KHÔNG ĐẠT); KHÔNG ĐẠT = mục 14 (**1**);
-CHƯA KIỂM = **0**. Tổng 14. Mục 12 là "đạt qua cây a11y", mục 13 là "đạt theo thiết kế", mục 5/6/10/11 có điều kiện ghi trong bảng.
+**Chốt số:** ĐẠT = mục 1–14 (**14**; mục 4 và 7 đạt sau khi sửa D1 ở `b21797f`, mục 14 đạt sau khi sửa bố cục ở nhánh
+`fix/zoom-200-layout` — cả ba là KHÔNG ĐẠT ở lần đo đầu); KHÔNG ĐẠT = **0**;
+CHƯA KIỂM = **0**. Tổng 14. Mục 12 là "đạt qua cây a11y", mục 13 là "đạt theo thiết kế", mục 14 là "đạt với zoom mô phỏng", mục 5/6/10/11 có điều kiện ghi trong bảng.
 
 ## 6. Ảnh greyscale 4 giá trị (Step 5)
 
@@ -152,13 +153,13 @@ Sau 6 nước chưa có lần `saveData` nào; chỉ pause/mốc 30 s/1000 đi�
 
 ### Quan sát phụ (chưa điều tra sâu)
 
-- **Thanh cuộn dọc xuất hiện khi dialog mở ở chế độ chuyển động mặc định** (520×800: `scrollHeight` 820 > `clientHeight` 800, thấy ở dialog thắng và dialog thua, biến mất sau khi tải lại). Chưa xác định nguyên nhân (nghi `a11y-dialog-host` hoặc chuyển focus).
+- **Thanh cuộn dọc xuất hiện khi dialog mở ở chế độ chuyển động mặc định** (520×800: `scrollHeight` 820 > `clientHeight` 800, thấy ở dialog thắng và dialog thua, biến mất sau khi tải lại). Chưa xác định nguyên nhân (nghi `a11y-dialog-host` hoặc chuyển focus). *Đo thêm khi kiểm lại mục 14:* xảy ra cả khi "Giảm chuyển động" bật và ở mọi cỡ viewport, trên cả bản trước khi sửa bố cục (1280×720: `scrollHeight` 740 > 720, thanh cuộn chiếm 15 px nên canvas còn 1265 px; 260×400 có cả thanh cuộn ngang). Không do bố cục canvas gây ra và **chưa sửa**; nó làm canvas hẹp/thấp đi 15 px trong lúc dialog mở.
 - **Không có favicon** → `404` trên `/favicon.ico` (lỗi console đỏ nhưng không ảnh hưởng game).
 - **Nhãn "Merge 2048"** nằm trong một vùng `aria-live="polite"` của cây a11y (màn loading tĩnh còn trong DOM), nên screen reader có thể đọc cả tên game khi vào trang.
 
 ## 8. Việc chưa làm / giới hạn
 
-- Không có screen reader thật; không có thiết bị cảm ứng thật; không zoom trình duyệt thật bằng Ctrl+=.
+- Không có screen reader thật; không có thiết bị cảm ứng thật; không zoom trình duyệt thật bằng Ctrl+= (mục 14 trước và sau khi sửa đều đo bằng viewport một nửa); chưa kiểm OS text scaling.
 - Không chạy SDK Test Suite chính thức và bundle analyzer của Playables (preflight đã nhắc).
 - Không kiểm 4 môi trường của cert (preflight nhắc).
 - Mục QA 10 không bắt khung giữa tween.
@@ -166,4 +167,5 @@ Sau 6 nước chưa có lần `saveData` nào; chỉ pause/mốc 30 s/1000 đi�
 ## 9. Phụ lục — file ảnh
 
 `docs/verification/`: `board-2-64-512-4096-mau.png`, `board-2-64-512-4096-greyscale.png`, `theme-dark.png`,
-`theme-contrast.png`, `zoom200-640x360.png`, `zoom200-260x400.png`, `defect-dialog-ket-sau-van-moi.png`.
+`theme-contrast.png`, `zoom200-640x360.png`, `zoom200-260x400.png` (trước khi sửa mục 14), `zoom200-640x360-sau-sua.png`,
+`zoom200-260x400-sau-sua.png` (sau khi sửa), `defect-dialog-ket-sau-van-moi.png`.

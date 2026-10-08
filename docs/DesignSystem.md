@@ -144,6 +144,12 @@ radiusTile  = cell * 0.06
 hudHeight   = clamp(48px, 9vmin, 72px)
 ```
 
+> **Amend 2026-10-08 (3).** `280px` ở dòng `boardSide` nay là cỡ **ưu tiên**, không còn là sàn tuyệt
+> đối: khi viewport không chứa nổi HUD + 280 + D-pad (zoom 200 %), D-pad dời sang bên phải board,
+> và nếu vẫn thiếu chỗ thì board co dưới 280 cho vừa viewport (A11Y-10). Công thức trên giữ nguyên
+> cho mọi viewport đủ chỗ. Chi tiết: spec `docs/superpowers/specs/2026-10-08-2048-playables-design.md`
+> §12.3, "Amend 2026-10-08 (3)".
+
 - The board is **centred** and always square. If the viewport is wider than tall, letterbox with the page colour
   (pillarbox) — the certification rule is: fill the viewport, or centre + letterbox `[SRC]`.
 - Layout is done with CSS grid on the board (`grid-template: repeat(4, 1fr) / repeat(4, 1fr)`, `gap: var(--gap)`);

@@ -856,6 +856,28 @@ DOM a11y đi qua đúng `applyInput` / `applyAction` như canvas. Không có đ�
 | Zoom 200 % | Canvas theo `RESIZE` nên tự khớp; DOM a11y không bị cắt |
 | Haptics | `navigator.vibrate` khi có, toggle trong Settings |
 
+> **Amend 2026-10-08 (3) — "Zoom 200 %: canvas theo `RESIZE` nên tự khớp" là SAI, và sàn 280 px của
+> §B3:139 không còn tuyệt đối, theo quyết định của chủ dự án.**
+>
+> `RESIZE` chỉ làm canvas khớp viewport; nó không làm BỐ CỤC khớp. Đo ở lượt nghiệm thu
+> (`docs/verification-report.md` mục 14): zoom 200 % chia đôi viewport CSS, và ở 640×360 D-pad bị cắt
+> dưới đáy, ở 260×400 board bị cắt hai bên — vì `computeLayout` giữ `boardSide ≥ 280` tuyệt đối và
+> luôn xếp D-pad dưới board. A11Y-10 (PRD) thắng sàn đó. Quy tắc mới của `src/phaser/layout.ts`:
+>
+> 1. Xếp dọc HUD → board → D-pad nếu giữ được board ≥ 280 px. Mọi viewport đã lọt từ trước cho
+>    **đúng những con số cũ** (có test hồi quy khoá số).
+> 2. Không thì D-pad sang **bên phải** board nếu cách đó cho board lớn hơn (§B3:152-154 đã tính tới
+>    việc dời sang cạnh ở tỉ lệ rộng). Ví dụ 640×360: board 280, D-pad bên phải.
+> 3. Cả hai không giữ nổi 280 thì board **co lại** cho vừa (260×400: 188 px). Đệm trên nhường
+>    trước (16 → 4 px). Vẫn là px thật — không `transform: scale()`, không zoom camera. D-pad giữ
+>    nguyên nút 48 px, khe 8 px. Hàng HUD không co theo board (giữ ~280 px, hoặc gần hết bề ngang
+>    viewport nếu hẹp hơn) để hai thẻ điểm không đè nhau.
+> 4. Numeral của tile có sàn 11 px (§B2 "Min text size"); chỉ chạm tới khi ô < 39,3 px.
+>
+> Cam kết "không cắt, không đè" áp dụng từ viewport **260×360** trở lên (tức 520×720 ở zoom 200 %),
+> kiểm bằng test quét lưới trong `src/phaser/layout.test.ts`. Nhỏ hơn thì HUD 48 px + D-pad 160 px
+> đã ăn gần hết chiều cao; hàm vẫn trả số hữu hạn và không để gì đè nhau, nhưng không hứa lọt màn.
+
 
 
 ## 13. Build và đóng gói
