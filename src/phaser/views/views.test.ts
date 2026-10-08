@@ -61,7 +61,7 @@ class FakeGO {
   fillColor = 0
   fillAlpha = 1
   destroyed = false
-  input: { hitArea: FakeHitArea } | null = null
+  input: { hitArea: FakeHitArea; enabled: boolean } | null = null
   readonly ops: Op[] = []
   readonly handlers = new Map<string, (() => void)[]>()
 
@@ -91,10 +91,34 @@ class FakeGO {
     return this.#log2('setSize', w, h)
   }
   setInteractive(): this {
+    // Phaser thoát sớm khi `gameObject.input` đã tồn tại: `InputPlugin.enable()`
+    // chỉ bật lại `enabled`, KHÔNG đo lại ô bấm. Nhờ vậy `setInteractive()` gọi
+    // lần hai (đường mở lại overlay sau khi đã tắt input) giữ nguyên cỡ ô bấm đã
+    // đo lúc dựng — và các khẳng định về `hitArea` bên dưới vẫn đúng.
+    if (this.input !== null) {
+      this.input.enabled = true
+      return this.#log2('setInteractive')
+    }
     // `width` chụp TẠI ĐÂY. `setSize()` sau đó chỉ đổi hình, không đụng ô bấm —
     // đúng như `InputPlugin.setHitAreaFromTexture`.
-    this.input = { hitArea: new FakeHitArea(this.width, this.height) }
+    this.input = { hitArea: new FakeHitArea(this.width, this.height), enabled: true }
     return this.#log2('setInteractive')
+  }
+  disableInteractive(): this {
+    // `InputPlugin.disable()` đặt `input.enabled = false`. Hình vẫn nằm nguyên
+    // trên display list và vẫn được vẽ — chỉ là không nhận sự kiện nữa.
+    if (this.input !== null) this.input.enabled = false
+    return this.#log2('disableInteractive')
+  }
+  /**
+   * Mô phỏng `InputPlugin.processUpEvents`: nó phát `pointerup` cho MỌI hình
+   * nằm dưới con trỏ lúc nhả, chỉ lọc theo `input.enabled` — KHÔNG đòi hỏi trước
+   * đó phải có `pointerdown`, và KHÔNG quan tâm alpha (chỉ alpha đúng bằng 0 mới
+   * bị loại khỏi hit-test).
+   */
+  press(): void {
+    if (this.input?.enabled !== true) return
+    this.emit('pointerup')
   }
   on(event: string, cb: () => void): this {
     const list = this.handlers.get(event) ?? []
@@ -663,5 +687,85 @@ describe('createDialogs — không phải bản DOM', () => {
     const d = dialogs(s, layout320, [])
     d.open('win', { score: 8, best: 8 })
     expect(document.body.childElementCount).toBe(before)
+  })
+})
+
+describe('createDialogs — cửa sổ 800 ms mờ dần KHÔNG nhận input', () => {
+  /**
+   * Bối cảnh: `InputPlugin.processUpEvents` phát `pointerup` cho MỌI hình nằm
+   * dưới con trỏ lúc nhả, chỉ lọc theo `input.enabled` — không cần `pointerdown`
+   * trước đó, và alpha chỉ chặn hit-test khi ĐÚNG BẰNG 0. Nên suốt 800 ms mờ
+   * dần, nút vẫn bấm được nếu ta chỉ trông cậy vào alpha. `press()` mô phỏng
+   * đúng đường đó.
+   */
+  it('close() tắt input NGAY, lúc tween mờ dần còn đang chạy', () => {
+    const s = makeScene()
+    const actions: string[] = []
+    const d = dialogs(s, layout320, actions)
+    d.open('gameover', { score: 8, best: 8 })
+
+    const retry = actionButtons(s)[0]!
+    const close = hitTargets(s)[0]!
+    // Đang mở thì bấm được — nếu không thì "tắt lúc đóng" chẳng nói lên điều gì.
+    expect(retry.input?.enabled).toBe(true)
+    expect(close.input?.enabled).toBe(true)
+
+    d.close()
+
+    // Tween mờ dần đang chạy: chưa hề chạm alpha của hình nào.
+    const fade = s.tweensAdded.at(-1)
+    expect(fade?.alpha).toBe(0)
+    expect(fade?.stopped).toBe(false)
+
+    retry.press()
+    close.press()
+    expect(actions).toEqual([])
+
+    // Không phải "gỡ handler cho xong": handler vẫn nằm đó, chỉ input bị tắt.
+    retry.emit('pointerup')
+    expect(actions).toEqual(['retry'])
+  })
+
+  it('mở lại thì input bật lại và ô bấm giữ nguyên cỡ đã đo', () => {
+    const s = makeScene()
+    const actions: string[] = []
+    const d = dialogs(s, layout320, actions)
+    d.open('gameover', { score: 8, best: 8 })
+    d.close()
+    s.tweensAdded.at(-1)?.onComplete?.()
+    expect(d.phase).toBe('closed')
+
+    d.open('gameover', { score: 8, best: 8 })
+    const retry = actionButtons(s).at(-1)!
+    expect(retry.input?.enabled).toBe(true)
+    // `setInteractive()` lần hai không đo lại ô bấm — cỡ vẫn khớp hình.
+    expect(retry.input?.hitArea.width).toBe(retry.width)
+    retry.press()
+    expect(actions).toEqual(['retry'])
+  })
+
+  it('phase đi đúng vòng closed → open → closing → closed', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    expect(d.phase).toBe('closed')
+    d.open('win', { score: 8, best: 8 })
+    expect(d.phase).toBe('open')
+    d.close()
+    // Điểm mấu chốt: đây KHÔNG phải 'closed'. Tấm card vẫn đang phơi ra trước
+    // mắt người chơi, và mọi cổng chặn phải biết điều đó.
+    expect(d.phase).toBe('closing')
+    s.tweensAdded.at(-1)?.onComplete?.()
+    expect(d.phase).toBe('closed')
+  })
+
+  it('đóng hai lần không mở lại cửa sổ mờ dần', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('win', { score: 8, best: 8 })
+    d.close()
+    const tweens = s.tweensAdded.length
+    d.close()
+    expect(s.tweensAdded.length).toBe(tweens)
+    expect(d.phase).toBe('closing')
   })
 })

@@ -6,11 +6,14 @@ import {
   buttonLabels,
   type DialogAction,
   type DialogKind,
+  type DialogPhase,
 } from '../phaser/views/dialogs'
 import {
   createOverlayPresenter,
   dialogHeading,
   dialogKindFor,
+  overlayAcceptsAction,
+  overlayCoversScreen,
   overlayForStatus,
 } from './overlay'
 
@@ -21,18 +24,31 @@ import {
  */
 vi.mock('phaser', () => ({ default: {} }))
 
-/** Lớp canvas giả: chỉ ghi lại đúng những gì tầng này cần. */
+/**
+ * Lớp canvas giả. `close()` chuyển sang `'closing'` chứ không nhảy thẳng về
+ * `'closed'` — đó đúng là hành vi của `views/dialogs.ts` (tween `--dur-overlay`
+ * 800 ms), và cả lớp lỗi "bấm hai lần trong lúc mờ dần" sống trong cửa sổ đó.
+ */
 function fakeDialogs() {
-  let open: DialogKind | null = null
+  let phase: DialogPhase = 'closed'
   return {
     open(kind: DialogKind): void {
-      open = kind
+      void kind
+      phase = 'open'
     },
     close(): void {
-      open = null
+      if (phase === 'closed') return
+      phase = 'closing'
+    },
+    /** Tween mờ dần chạy xong. */
+    finishClose(): void {
+      phase = 'closed'
     },
     get isOpen(): boolean {
-      return open !== null
+      return phase === 'open'
+    },
+    get phase(): DialogPhase {
+      return phase
     },
   }
 }
@@ -208,5 +224,47 @@ describe('công bố kết quả và tầng nền bị khoá', () => {
     expect(boardRoot.hasAttribute('inert')).toBe(true)
     p.close()
     expect(boardRoot.hasAttribute('inert')).toBe(false)
+  })
+})
+
+describe('ba trạng thái của overlay — cửa sổ mờ dần không phải "đã đóng"', () => {
+  it('closed → open → closing → closed theo đúng vòng đời', () => {
+    const p = presenter()
+    expect(p.phase).toBe('closed')
+    p.open('over')
+    expect(p.phase).toBe('open')
+    p.close()
+    // Còn 800 ms mờ dần: tấm card VẪN đang phơi ra trước mắt người chơi.
+    expect(p.phase).toBe('closing')
+    dialogs.finishClose()
+    expect(p.phase).toBe('closed')
+  })
+
+  it("isOpen CHỈ đúng khi 'open' — 'closing' đã hết hiệu lực", () => {
+    const p = presenter()
+    p.open('win')
+    p.close()
+    expect(p.phase).toBe('closing')
+    expect(p.isOpen).toBe(false)
+    expect(dialogs.isOpen).toBe(false)
+  })
+
+  it('overlayCoversScreen: cả open LẪN closing đều đang chiếm màn hình', () => {
+    expect(overlayCoversScreen('closed')).toBe(false)
+    expect(overlayCoversScreen('open')).toBe(true)
+    // Đây là cửa sổ lọt input xuống bàn cờ nếu chỉ hỏi `isOpen`.
+    expect(overlayCoversScreen('closing')).toBe(true)
+  })
+
+  it('overlayAcceptsAction: chỉ open mới nhận action', () => {
+    expect(overlayAcceptsAction('open')).toBe(true)
+    expect(overlayAcceptsAction('closing')).toBe(false)
+    expect(overlayAcceptsAction('closed')).toBe(false)
+  })
+
+  it('đóng khi đã đóng là no-op, không mở lại cửa sổ mờ dần', () => {
+    const p = presenter()
+    p.close()
+    expect(p.phase).toBe('closed')
   })
 })

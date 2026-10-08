@@ -20,10 +20,11 @@ import './styles/tokens.css'
 import './styles/app.css'
 import './a11y/bridge.css'
 import { createA11yBridge } from './a11y/bridge'
-import { shouldRequestInterstitial } from './app/ads'
+import { createActionReceiver } from './app/actions'
 import { createHaptics } from './app/haptics'
 import {
   createOverlayPresenter,
+  overlayCoversScreen,
   overlayForStatus,
   type OverlayPresenter,
 } from './app/overlay'
@@ -44,7 +45,7 @@ import { attachKeyboardInput } from './phaser/input'
 import { computeLayout } from './phaser/layout'
 import type { BoardScene } from './phaser/scenes/Board'
 import { applyThemeToDom, buildTheme, type ThemeName } from './phaser/theme'
-import { createDialogs, type DialogAction } from './phaser/views/dialogs'
+import { createDialogs } from './phaser/views/dialogs'
 import { createDpad } from './phaser/views/dpad'
 import { createHud } from './phaser/views/hud'
 import { createSettings } from './phaser/views/settings'
@@ -316,7 +317,13 @@ async function boot(): Promise<void> {
     // Cổng chặn đặt Ở ĐÂY, theo state — không phải bằng cách gỡ listener.
     // `input.ts` dùng CHUNG một listener cho `Esc` và các phím mũi tên, nên gỡ
     // nó khi overlay mở là mất luôn đường `Esc` đóng dialog (§A11).
-    if (settings?.isOpen === true) return
+    //
+    // `overlayCoversScreen` chứ không phải `isOpen`: trong 800 ms mờ dần
+    // (`'closing'`) tấm card VẪN đang phơi ra trước mắt người chơi, nên một cú
+    // vuốt lúc đó không được làm board nhúc nhích phía sau nó. Dùng `isOpen` thì
+    // đúng cửa sổ đó lọt input xuống bàn cờ.
+    if (overlayCoversScreen(settings?.phase ?? 'closed')) return
+    if (overlayCoversScreen(overlayView?.phase ?? 'closed')) return
 
     const step = applyInput(state, dir, ctx)
     // `move === null` nghĩa là input bị bỏ qua vì overlay đang mở — KHÁC hẳn
@@ -356,55 +363,39 @@ async function boot(): Promise<void> {
   /**
    * Điểm vào DUY NHẤT cho mọi action của dialog: nút trên canvas, nút THẬT
    * trong DOM (§12.1) và `Esc` đều tới đây qua `OverlayPresenter`.
+   *
+   * Bản thân logic — kể cả CỔNG CHẶN theo trạng thái overlay và chốt "một quảng
+   * cáo cho một lần thua" — nằm ở `app/actions.ts`. Nó ở đó chứ không ở đây vì
+   * tệp này không nhập được vào test (`void boot()` chạy ngay khi nạp), mà một
+   * cổng chặn không có test thì lần refactor sau sẽ mất.
    */
-  function applyAction(action: DialogAction): void {
-    // Pause chặn luôn đường này: nút trong dialog DOM là đường thứ hai vào cùng
-    // logic, và nó vẫn bấm được bằng bàn phím kể cả khi vòng lặp đã ngủ.
-    if (paused) return
-    // Đóng ở cả hai tầng trước khi làm gì khác — mở lại sau đó là đường duy
-    // nhất không để lại overlay mồ côi.
-    closeOverlay()
-
-    if (action === 'close') {
-      // Nút X trên canvas và `Esc`. KHÔNG có "đóng trần": state vẫn là 'won'
-      // hay 'over' thì `applyInput` bỏ qua mọi nước đi, mà overlay thì đã biến
-      // mất — người chơi kẹt trong một ván không bấm được gì. Nên "đóng" phải
-      // dịch thành hành động có nghĩa.
-      if (state.status === 'won') return applyAction('keep-playing')
-      if (state.status === 'over') return applyAction('retry')
-      return
-    }
-
-    if (action === 'keep-playing') {
-      const step = keepPlaying(state)
-      state = step.state
-      syncAll(null)
-      saveIfNeeded(step.milestones)
-      if (step.overlay === 'over') {
-        // Board hết nước thật: WIN vừa đóng thì GAME OVER phải mở ngay, không
-        // thì người chơi đứng trước một board chết mà không có nút nào.
-        gameOvers += 1
-        sfx.play('over')
-        showOverlay('over')
-      }
-      return
-    }
-
-    // 'retry' và 'new-game' đều là ván mới; kỷ lục và settings giữ nguyên (FR-09).
-    const step = newGame(state, ctx)
-    state = step.state
-    syncAll(null)
-    saveIfNeeded(step.milestones)
-
-    if (
-      action === 'retry' &&
-      shouldRequestInterstitial({ gameOvers, sessionStartedAt }, performance.now())
-    ) {
+  const { applyAction } = createActionReceiver({
+    isPaused: () => paused,
+    overlayPhase: () => overlayView?.phase ?? 'closed',
+    closeOverlay,
+    getState: () => state,
+    setState: (next) => {
+      state = next
+    },
+    keepPlaying: (s) => keepPlaying(s),
+    newGame: (s) => newGame(s, ctx),
+    syncAll,
+    saveIfNeeded,
+    showOverlay,
+    noteLoss: () => {
+      gameOvers += 1
+      sfx.play('over')
+    },
+    ads: {
+      state: () => ({ gameOvers, sessionStartedAt }),
+      now: () => performance.now(),
       // MO-05: không có quảng cáo thì game chạy tiếp — quảng cáo không bao giờ
       // chặn lối chơi, nên promise này cố ý không được await.
-      void platform.requestInterstitial()
-    }
-  }
+      request: () => {
+        void platform.requestInterstitial()
+      },
+    },
+  })
 
   function handleEscape(): void {
     if (settings?.isOpen === true) {

@@ -12,10 +12,21 @@ export type DialogKind = 'win' | 'gameover'
  */
 export type DialogAction = 'keep-playing' | 'retry' | 'new-game' | 'close'
 
+/**
+ * Vòng đời của overlay — BA trạng thái, không phải hai.
+ *
+ * `'closing'` là cửa sổ 800 ms của `--dur-overlay`: mọi thứ vẫn NHÌN THẤY nhưng
+ * đã hết hiệu lực. Thiếu trạng thái này thì "đang đóng" bị đối xử như "đã đóng",
+ * và một cú bấm thứ hai lọt vào đúng lúc alpha còn lớn hơn 0.
+ */
+export type DialogPhase = 'closed' | 'open' | 'closing'
+
 export type Dialogs = {
   open(kind: DialogKind, info: { score: number; best: number }): void
   close(): void
   readonly isOpen: boolean
+  /** `'closing'` = đang mờ dần, tức còn chiếm màn hình nhưng đã hết hiệu lực. */
+  readonly phase: DialogPhase
   relayout(layout: Layout): void
   setTheme(theme: PhaserTheme): void
   /**
@@ -147,7 +158,7 @@ export function createDialogs(
 ): Dialogs {
   let t = theme
   let l = layout
-  let current: DialogKind | null = null
+  let phase: DialogPhase = 'closed'
   let reducedMotion = false
   let fade: Phaser.Tweens.Tween | null = null
 
@@ -262,6 +273,37 @@ export function createDialogs(
     return list
   }
 
+  /** Những hình ĐANG nhận input: ô chạm nút đóng + nền từng nút hành động. */
+  function hitObjects(): Phaser.GameObjects.Rectangle[] {
+    return [closeHit, ...buttons.map((b) => b.bg)]
+  }
+
+  /**
+   * Bật/tắt input của overlay bằng TRẠNG THÁI, không bằng alpha.
+   *
+   * Không thể trông cậy vào việc mờ dần để chặn bấm: Phaser chỉ bỏ hit-test khi
+   * alpha ĐÚNG BẰNG 0 (`components/Alpha.js` xoá `renderFlags` ở alpha 0), còn
+   * `InputPlugin.processUpEvents` phát `pointerup` cho MỌI hình đang nằm dưới con
+   * trỏ lúc nhả — nó không đòi hỏi trước đó phải có `pointerdown`. Nên suốt 800
+   * ms của `--dur-overlay`, nút vẫn bấm được nếu ta chỉ dựa vào alpha.
+   *
+   * `setInteractive()` không tham số đo lại ô bấm: Phaser thoát sớm khi
+   * `gameObject.input` đã tồn tại, chỉ bật lại `enabled` — nên ô bấm giữ nguyên
+   * kích thước đã đo lúc dựng.
+   */
+  function setInputEnabled(on: boolean): void {
+    for (const o of hitObjects()) {
+      if (on) o.setInteractive()
+      else o.disableInteractive()
+    }
+  }
+
+  /** Chốt trạng thái đã đóng. Idempotent; tween cũ gọi lại cũng vô hại. */
+  function finishClose(): void {
+    phase = 'closed'
+    setVisible(false)
+  }
+
   /** Gỡ tween mờ đang chạy. Phải gọi TRƯỚC khi huỷ hình, không thì tween giữ
    * tham chiếu tới hình đã chết. */
   function stopFade(): void {
@@ -335,7 +377,7 @@ export function createDialogs(
     stopFade()
     const s = opts.getStrings()
     const locale = opts.getLocale()
-    current = kind
+    phase = 'open'
     title.setText(s[TITLE_KEY[kind]])
     body.setText(
       `${s.score.toUpperCase()}: ${formatNumber(info.score, locale)}   ` +
@@ -343,6 +385,8 @@ export function createDialogs(
     )
     rebuildButtons(kind)
     setVisible(true)
+    // Sau `rebuildButtons()`: nút vừa được dựng lại là những ô bấm mới.
+    setInputEnabled(true)
     const targets = fadeTargets()
     for (const o of targets) o.setAlpha(0)
     // §B5:181 "Win/over message — fade-in 800ms". Không tween nếu giảm chuyển
@@ -360,13 +404,22 @@ export function createDialogs(
   }
 
   function close(): void {
-    current = null
+    // Chỉ overlay ĐANG MỞ mới đóng được. Cổng này là quan trọng nhất trong tệp:
+    //  - `'closing'` rồi mà đóng lần nữa thì cửa sổ mờ dần bị kéo dài thêm 800 ms
+    //    — mà cửa sổ đó chặn cả input của bàn cờ (xem `overlayCoversScreen`);
+    //  - `'closed'` rồi mà đóng nữa thì một lời gọi thừa (đường `closeOverlay()`
+    //    lúc pause) sẽ dựng lại cửa sổ đó từ hư không.
+    if (phase !== 'open') return
+    const targets = fadeTargets()
+    // Hiệu lực phải mất NGAY, không phải sau 800 ms: đây chính là cửa sổ mà cú
+    // bấm thứ hai lọt qua.
+    phase = 'closing'
+    setInputEnabled(false)
     if (reducedMotion) {
       stopFade()
-      setVisible(false)
+      finishClose()
       return
     }
-    const targets = fadeTargets()
     stopFade()
     const tw = scene.tweens.add({
       targets,
@@ -376,7 +429,7 @@ export function createDialogs(
       onComplete: () => {
         if (fade !== tw) return
         fade = null
-        setVisible(false)
+        finishClose()
       },
     })
     fade = tw
@@ -388,12 +441,17 @@ export function createDialogs(
   // resize) sẽ tác động lên những hình chưa từng được vẽ.
   relayoutAll()
   setVisible(false)
+  // Không có overlay nào lúc dựng, nên không ô bấm nào được nhận input.
+  setInputEnabled(false)
 
   return {
     open,
     close,
     get isOpen() {
-      return current !== null
+      return phase === 'open'
+    },
+    get phase(): DialogPhase {
+      return phase
     },
     relayout(next) {
       l = next
@@ -413,13 +471,13 @@ export function createDialogs(
     setReducedMotion(on) {
       reducedMotion = on
       if (!on) return
-      // Đang mở thì hiện ngay; đang đóng thì ẩn ngay — không để overlay lửng lơ
-      // nửa trong suốt khi người chơi vừa bật giảm chuyển động.
+      // Đang mở thì hiện ngay; đang đóng thì đóng thẳng — không để overlay lửng
+      // lơ nửa trong suốt khi người chơi vừa bật giảm chuyển động.
       stopFade()
-      if (current !== null) {
+      if (phase === 'open') {
         for (const o of fadeTargets()) o.setAlpha(1)
       } else {
-        setVisible(false)
+        finishClose()
       }
     },
     destroy() {

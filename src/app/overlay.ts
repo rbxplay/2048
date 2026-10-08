@@ -5,6 +5,7 @@ import {
   buttonLabels,
   type DialogAction,
   type DialogKind,
+  type DialogPhase,
 } from '../phaser/views/dialogs'
 import type { Overlay, Status } from './session'
 
@@ -16,6 +17,7 @@ export type DialogLayer = {
   open(kind: DialogKind, info: { score: number; best: number }): void
   close(): void
   readonly isOpen: boolean
+  readonly phase: DialogPhase
 }
 
 /** Lớp DOM cho screen reader. Cùng lý do: chỉ khai phần dùng tới. */
@@ -25,10 +27,44 @@ export type BridgeLayer = {
   announceOutcome(kind: DialogKind, strings: Strings): void
 }
 
+/**
+ * Vòng đời overlay ở tầng ghép nối — đúng ba trạng thái của lớp canvas.
+ *
+ * Không có cờ riêng ở đây: `OverlayPresenter` suy từ `deps.dialogs.phase`. Hai
+ * nguồn sự thật cho cùng một câu hỏi ("overlay đang thế nào?") là đúng cách để
+ * chúng lệch nhau, mà lệch ở đây nghĩa là cổng chặn input mở sai lúc.
+ */
+export type OverlayPhase = DialogPhase
+
+/**
+ * Overlay còn CHIẾM MÀN HÌNH: đang mở hoặc đang mờ dần. HÀM THUẦN.
+ *
+ * Dùng cho input của BÀN CỜ. Cả hai trạng thái đó đều đang phơi một tấm card ra
+ * trước mắt người chơi, nên một cú vuốt không được làm board nhúc nhích phía sau
+ * nó — kể cả trong 800 ms cuối khi card đang mờ đi.
+ */
+export function overlayCoversScreen(phase: OverlayPhase): boolean {
+  return phase !== 'closed'
+}
+
+/**
+ * Action của dialog có được thi hành không. HÀM THUẦN.
+ *
+ * CHỈ khi overlay đang MỞ THẬT. Đây là chốt của lỗi "bấm hai lần trong lúc mờ
+ * dần": cú bấm thứ nhất đóng overlay (⇒ `'closing'`), cú bấm thứ hai vẫn tới được
+ * tầng nhận vì Phaser chỉ bỏ hit-test khi alpha đúng bằng 0 — nhưng nó rơi vào
+ * `'closing'` và bị bỏ qua, thay vì chạy lại đúng action đó. Điều kiện ở đây là
+ * TƯỜNG MINH theo trạng thái, không phải hệ quả phụ của `alpha > 0`.
+ */
+export function overlayAcceptsAction(phase: OverlayPhase): boolean {
+  return phase === 'open'
+}
+
 export type OverlayPresenter = {
   open(overlay: 'win' | 'over'): void
   close(): void
   readonly isOpen: boolean
+  readonly phase: OverlayPhase
 }
 
 /**
@@ -74,12 +110,9 @@ export function createOverlayPresenter(deps: {
   getInfo: () => { score: number; best: number }
   onAction: (action: DialogAction) => void
 }): OverlayPresenter {
-  let isOpen = false
-
   function open(overlay: 'win' | 'over'): void {
     const kind = dialogKindFor(overlay)
     const strings = deps.getStrings()
-    isOpen = true
     // Canvas trước, DOM sau — cùng một `kind`, nên hai bên không thể lệch.
     deps.dialogs.open(kind, deps.getInfo())
     deps.bridge.announceOutcome(kind, strings)
@@ -96,7 +129,6 @@ export function createOverlayPresenter(deps: {
   }
 
   function close(): void {
-    isOpen = false
     deps.dialogs.close()
     // Idempotent ở tầng cầu nối, nên gọi lúc không có dialog là no-op thật.
     deps.bridge.closeDialog()
@@ -106,7 +138,11 @@ export function createOverlayPresenter(deps: {
     open,
     close,
     get isOpen(): boolean {
-      return isOpen
+      // Suy từ lớp canvas, không giữ cờ riêng — xem `OverlayPhase`.
+      return overlayAcceptsAction(deps.dialogs.phase)
+    },
+    get phase(): OverlayPhase {
+      return deps.dialogs.phase
     },
   }
 }

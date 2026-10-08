@@ -5,7 +5,7 @@ import { DARK_HEX, hexToInt } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
 import { CARD_RADIUS, crisp, drawFloatShadow, FONT_STACK, hexFromInt } from './canvas'
-import { dialogCardWidth, OVERLAY_MS, OVERLAY_REDUCED_MS } from './dialogs'
+import { dialogCardWidth, OVERLAY_MS, OVERLAY_REDUCED_MS, type DialogPhase } from './dialogs'
 import { hudLabelSize } from './hud'
 
 /**
@@ -83,6 +83,12 @@ export type Settings = {
   open(current: SaveSettings, onClose: () => void): void
   close(): void
   readonly isOpen: boolean
+  /**
+   * Vòng đời của bảng — cùng ba trạng thái với overlay (`DialogPhase`).
+   * `'closing'` là cửa sổ mờ dần: còn nhìn thấy nhưng đã hết hiệu lực, nên input
+   * phải bị chặn y như lúc đã đóng.
+   */
+  readonly phase: DialogPhase
   relayout(layout: Layout): void
   setTheme(theme: PhaserTheme): void
   /**
@@ -163,7 +169,7 @@ export function createSettings(
 ): Settings {
   let t = theme
   let l = layout
-  let isOpen = false
+  let phase: DialogPhase = 'closed'
   let state: SaveSettings | null = null
   let themeIndex = 0
   let onClose: (() => void) | null = null
@@ -441,11 +447,56 @@ export function createSettings(
     for (const o of fadeTargets()) o.setVisible(visible)
   }
 
+  /**
+   * Năm hình nhận input của bảng: ô kéo, hai toggle, nút theme, nút Close.
+   *
+   * Danh sách này là chủ ý thứ hai bên cạnh `all` — `all` là những gì được vẽ và
+   * được huỷ, còn đây là những gì bấm được. Gộp chúng lại là cách để một hình chỉ
+   * để nhìn lỡ nhận input.
+   */
+  const hits: Phaser.GameObjects.Rectangle[] = [
+    sliderHit,
+    hapticsHit,
+    motionHit,
+    themeBtn,
+    closeBtn,
+  ]
+
+  /**
+   * Bật/tắt input của bảng bằng TRẠNG THÁI, không bằng alpha.
+   *
+   * Phaser chỉ bỏ hit-test khi alpha ĐÚNG BẰNG 0, còn `InputPlugin.processUpEvents`
+   * phát `pointerup` cho MỌI hình nằm dưới con trỏ lúc nhả — không đòi hỏi trước
+   * đó phải có `pointerdown`. Nên trong 800 ms của `--dur-overlay`, bấm vào nút
+   * theme trên tấm card đang mờ vẫn đổi được theme nếu ta chỉ trông cậy vào alpha.
+   *
+   * `setInteractive()` không tham số chỉ bật lại `enabled` (Phaser thoát sớm khi
+   * `gameObject.input` đã tồn tại) nên ô bấm giữ nguyên cỡ đã đo lúc dựng.
+   */
+  function setInputEnabled(on: boolean): void {
+    for (const o of hits) {
+      if (on) o.setInteractive()
+      else o.disableInteractive()
+    }
+  }
+
+  /** Chốt trạng thái đã đóng. Idempotent. */
+  function finishClose(): void {
+    phase = 'closed'
+    applyVisibility(false)
+  }
+
   function close(): void {
-    isOpen = false
+    // Chỉ bảng ĐANG MỞ mới đóng được — đóng lúc đang mờ dần sẽ kéo dài cửa sổ
+    // 800 ms, mà cửa sổ đó chặn input của bàn cờ; đóng lúc đã đóng thì dựng lại
+    // cửa sổ đó từ hư không.
+    if (phase !== 'open') return
+    // Hiệu lực mất NGAY, không phải sau 800 ms.
+    phase = 'closing'
+    setInputEnabled(false)
     if (reducedMotion) {
       stopFade()
-      applyVisibility(false)
+      finishClose()
       return
     }
     fade = scene.tweens.add({
@@ -453,7 +504,7 @@ export function createSettings(
       alpha: 0,
       duration: fadeMs(),
       ease: 'Sine.easeIn',
-      onComplete: () => applyVisibility(false),
+      onComplete: () => finishClose(),
     })
   }
 
@@ -461,11 +512,13 @@ export function createSettings(
   paintText()
   paintColors()
   relayoutAll()
+  // Chưa mở thì chưa ô bấm nào được nhận input.
+  setInputEnabled(false)
 
   return {
     open(current, handler) {
       stopFade()
-      isOpen = true
+      phase = 'open'
       state = { ...current }
       themeIndex = Math.max(0, THEMES.indexOf(current.theme))
       onClose = handler
@@ -476,6 +529,7 @@ export function createSettings(
         o.setVisible(true)
         o.setAlpha(0)
       }
+      setInputEnabled(true)
       fade = scene.tweens.add({
         targets: fadeTargets(),
         alpha: 1,
@@ -485,7 +539,10 @@ export function createSettings(
     },
     close,
     get isOpen() {
-      return isOpen
+      return phase === 'open'
+    },
+    get phase(): DialogPhase {
+      return phase
     },
     relayout(next) {
       l = next
@@ -503,7 +560,8 @@ export function createSettings(
       // Đang mở mà bật giảm chuyển động thì hiện thẳng, không để panel lửng lơ
       // giữa chừng mờ.
       stopFade()
-      if (isOpen) for (const o of fadeTargets()) o.setAlpha(1)
+      if (phase === 'open') for (const o of fadeTargets()) o.setAlpha(1)
+      else finishClose()
     },
     destroy() {
       stopFade()

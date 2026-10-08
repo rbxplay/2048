@@ -258,6 +258,24 @@ hưởng cả năm lỗi này.
 > cả năm call life-cycle ở trên (`game-ready`, `load-data`, `save-data`, `audio-check`,
 > `pause-resume`) nay đều có trong bundle.
 >
+> **Phạm vi ảnh hưởng — ba mục của tài liệu này cùng đỏ vì MỘT nguyên nhân.** Ghi rõ để hồ sơ không
+> bị đọc thành "chỉ §15 mục 5 trượt":
+>
+> - **§15 mục 5** — `python3 scripts/playables_preflight.py ./dist --src ./src` **exit 1**, đúng 2
+>   mục MUST như trên.
+> - **§15 mục 6** — `node scripts/check-bundle.mjs` cũng **exit 1**, **6 lỗi**, tất cả ở
+>   `dist/index.html:13`: `localStorage` ×4 (`[bộ nhớ trình duyệt]`) và `visibilitychange` ×2
+>   (`[Page Visibility API]`). Hai phép kiểm còn lại của chính script đó — tên file khớp
+>   `[A-Za-z0-9._-]`, và có `index.html` ở gốc bundle — **đều đạt**; script báo lỗi theo từng mục
+>   nên danh sách 6 dòng trên là đầy đủ.
+> - **§14.2** — ý "`dist/` không chứa `localStorage` / `sessionStorage` / `indexedDB` /
+>   `document.cookie` / `visibilitychange`" **không đạt**, đúng 6 lần khớp đó. Hai ý còn lại của
+>   §14.2 (tên file hợp lệ; `dist/` chỉ có đường dẫn tương đối) không nằm trong 6 lỗi này — ý thứ
+>   hai chỉ có mục SHOULD `[xhr-websocket]` của preflight nhắc tới, không phải một phép kiểm đỏ.
+>
+> Ba mục trên có chung một nguyên nhân duy nhất — vendor trong artifact — nên không mục nào sửa
+> được riêng lẻ; chúng phải đi kèm hồ sơ như nhau.
+>
 > Cả hai mục đều đến từ **vendor, không từ code dự án**: số lần xuất hiện trong `dist/index.html`
 > trùng khít với `node_modules/phaser/dist/phaser.min.js` (4 và 8), còn `src/` không có lần nào.
 > Đo trên Phaser 4.2.1:

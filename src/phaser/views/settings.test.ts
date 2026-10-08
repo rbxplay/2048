@@ -49,7 +49,7 @@ class FakeGO {
   fillColor = 0
   fillAlpha = 1
   destroyed = false
-  input: { hitArea: FakeHitArea } | null = null
+  input: { hitArea: FakeHitArea; enabled: boolean } | null = null
   readonly ops: Op[] = []
   readonly handlers = new Map<string, ((...args: unknown[]) => void)[]>()
 
@@ -80,6 +80,13 @@ class FakeGO {
     return this.#log('setSize', w, h)
   }
   setInteractive(): this {
+    // Phaser thoát sớm khi `gameObject.input` đã tồn tại: `InputPlugin.enable()`
+    // chỉ bật lại `enabled`, KHÔNG đo lại ô bấm. Nên `setInteractive()` gọi lần
+    // hai (đường mở lại bảng sau khi đã tắt input) giữ nguyên ô bấm cũ.
+    if (this.input !== null) {
+      this.input.enabled = true
+      return this.#log('setInteractive')
+    }
     // `width`/`height` chụp TẠI ĐÂY, đúng như `InputPlugin.setHitAreaFromTexture`:
     // gọi `setSize()` sau đó chỉ đổi hình, không đụng ô bấm — trừ khi có
     // `syncHitArea` đồng bộ lại.
@@ -93,8 +100,23 @@ class FakeGO {
           self.input!.hitArea.height = h
         },
       },
+      enabled: true,
     }
     return this.#log('setInteractive')
+  }
+  disableInteractive(): this {
+    // `InputPlugin.disable()`: hình vẫn được vẽ, chỉ thôi nhận sự kiện.
+    if (this.input !== null) this.input.enabled = false
+    return this.#log('disableInteractive')
+  }
+  /**
+   * Mô phỏng `InputPlugin.processUpEvents`: phát `pointerup` cho hình đang nằm
+   * dưới con trỏ lúc nhả, lọc theo `input.enabled` — không cần `pointerdown`
+   * trước đó, và không quan tâm alpha.
+   */
+  press(): void {
+    if (this.input?.enabled !== true) return
+    this.emit('pointerup')
   }
   on(event: string, cb: (...args: unknown[]) => void): this {
     const list = this.handlers.get(event) ?? []
@@ -483,6 +505,76 @@ describe('createSettings — vòng đời', () => {
     const { panel } = makePanel()
     panel.open(baseSave, () => {})
     expect(document.body.childElementCount).toBe(before)
+  })
+})
+
+describe('createSettings — cửa sổ 800 ms mờ dần KHÔNG nhận input', () => {
+  /**
+   * `InputPlugin.processUpEvents` phát `pointerup` cho MỌI hình nằm dưới con trỏ
+   * lúc nhả, chỉ lọc theo `input.enabled` — không cần `pointerdown` trước đó, và
+   * alpha chỉ chặn hit-test khi ĐÚNG BẰNG 0. Nên bấm nút theme trên tấm card
+   * đang mờ dần vẫn đổi được theme nếu ta chỉ trông cậy vào alpha.
+   */
+  it('close() tắt input NGAY, lúc tween mờ dần còn đang chạy', () => {
+    const { s, panel, patches } = makePanel()
+    panel.open(baseSave, () => {})
+    const theme = themeButton(s)!
+    const close = closeButton(s)!
+
+    // Đang mở thì bấm được.
+    theme.press()
+    expect(patches).toEqual([{ theme: 'dark' }])
+
+    panel.close()
+    const fade = s.tweensAdded.at(-1)
+    expect(fade?.alpha).toBe(0)
+    expect(fade?.stopped).toBe(false)
+
+    theme.press()
+    close.press()
+    expect(patches).toEqual([{ theme: 'dark' }])
+
+    // Không phải gỡ handler: handler vẫn còn, chỉ input bị tắt.
+    theme.emit('pointerup')
+    expect(patches).toEqual([{ theme: 'dark' }, { theme: 'contrast' }])
+  })
+
+  it('mở lại thì input bật lại và ô bấm giữ nguyên cỡ đã đo', () => {
+    const { s, panel, patches } = makePanel()
+    panel.open(baseSave, () => {})
+    panel.close()
+    s.tweensAdded.at(-1)?.fire()
+    expect(panel.phase).toBe('closed')
+
+    panel.open({ ...baseSave, theme: 'dark' }, () => {})
+    const theme = themeButton(s)!
+    expect(theme.input?.enabled).toBe(true)
+    // `setInteractive()` lần hai không đo lại ô bấm — cỡ vẫn khớp hình.
+    expect(theme.input?.hitArea.width).toBe(theme.width)
+    theme.press()
+    expect(patches).toEqual([{ theme: 'contrast' }])
+  })
+
+  it('phase đi đúng vòng closed → open → closing → closed', () => {
+    const { s, panel } = makePanel()
+    expect(panel.phase).toBe('closed')
+    panel.open(baseSave, () => {})
+    expect(panel.phase).toBe('open')
+    panel.close()
+    // Không phải 'closed': card vẫn đang phơi ra trước mắt người chơi.
+    expect(panel.phase).toBe('closing')
+    s.tweensAdded.at(-1)?.fire()
+    expect(panel.phase).toBe('closed')
+  })
+
+  it('đóng hai lần không mở lại cửa sổ mờ dần', () => {
+    const { s, panel } = makePanel()
+    panel.open(baseSave, () => {})
+    panel.close()
+    const tweens = s.tweensAdded.length
+    panel.close()
+    expect(s.tweensAdded.length).toBe(tweens)
+    expect(panel.phase).toBe('closing')
   })
 })
 
