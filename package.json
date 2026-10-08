@@ -1,0 +1,29 @@
+{
+  "name": "merge-2048",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Merge 2048 — HTML5 game for YouTube Playables",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "check:contrast": "python3 scripts/check_contrast.py",
+    "check:preflight": "python3 scripts/playables_preflight.py ./dist --src ./src"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1",
+    "@types/node": "^26.6.2",
+    "vite-plugin-singlefile": "^2.3.3",
+    "jsdom": "^29.1.1"
+  },
+  "dependencies": {
+    "phaser": "^4.2.1"
+  }
+}

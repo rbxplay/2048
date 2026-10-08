@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Merge 2048</title>
+    <!--
+      SDK YouTube Playables. KHÔNG được thêm `defer` hay `async`: SDK tự kiểm
+      hai attribute này trong firstFrameReady() và báo cáo tuân thủ dựa trên
+      kết quả. Thẻ này phải nằm TRƯỚC code game.
+    -->
+    <script src="https://www.youtube.com/game_api/v1"></script>
+  </head>
+  <body>
+    <div id="app">
+      <!--
+        Màn loading nằm tĩnh ở đây để hiện ngay ở first paint, trước khi bundle
+        JS chạy — nhờ vậy không bao giờ có khoảng trắng nhấp nháy.
+      -->
+      <div id="screen">
+        <div class="loading" role="status" aria-live="polite">
+          <p class="loading__title">Merge 2048</p>
+          <div class="loading__bar"><span></span></div>
+        </div>
+      </div>
+      <div id="game-container"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
