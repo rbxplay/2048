@@ -38,6 +38,28 @@ export function isEscapeKey(key: string): boolean {
   return key === 'Escape' || key === 'Esc'
 }
 
+/** Thẻ mà bàn phím thuộc về CHÍNH NÓ, không thuộc về game. */
+const FORM_TAGS = new Set(['input', 'textarea', 'select'])
+
+/**
+ * Có phải phím đang gõ vào một ô nhập DOM thật không (R19).
+ *
+ * §12.1:747 bắt slider SFX là `<input type="range">` DOM thật, và §B8:435 bắt nó
+ * "keyboard operable with arrow keys". `KeyboardManager` của Phaser gắn listener
+ * ở `window`, nên nếu ta `preventDefault()` vô điều kiện thì default action đổi
+ * giá trị của slider bị huỷ và người chơi không kéo được SFX bằng bàn phím.
+ *
+ * Suy theo `tagName`/`isContentEditable` chứ không `instanceof HTMLElement`:
+ * hàm này chỉ cần đúng hình dạng đó, và như vậy nó thuần, không phụ thuộc lớp
+ * DOM cụ thể của môi trường.
+ */
+export function shouldIgnoreKey(target: EventTarget | null): boolean {
+  if (target === null || typeof target !== 'object') return false
+  const el = target as { tagName?: unknown; isContentEditable?: unknown }
+  const tag = typeof el.tagName === 'string' ? el.tagName.toLowerCase() : ''
+  return FORM_TAGS.has(tag) || el.isContentEditable === true
+}
+
 /**
  * Nối bàn phím của Phaser vào cùng một đường input với canvas swipe (§12.3).
  *
@@ -57,10 +79,18 @@ export function attachKeyboardInput(
   if (kb === null) return () => {}
 
   const handler = (ev: KeyboardEvent): void => {
+    // `Esc` xét TRƯỚC guard: đóng dialog bằng bàn phím phải chạy được cả khi
+    // focus đang nằm trong một ô nhập (§A11, A11Y-04). Và `Esc` không bao giờ
+    // `preventDefault()` — §B8 ghi MUST NOT.
     if (isEscapeKey(ev.key)) {
       onEscape()
       return
     }
+    // Ô nhập DOM thật đang giữ focus thì nhường phím cho nó: cả `preventDefault()`
+    // lẫn `onDir` đều phải im, vì chặn default action là huỷ luôn việc đổi giá
+    // trị của slider (R19). Guard đặt TRƯỚC `preventDefault`, không phải sau —
+    // chặn ở `onDir` là quá muộn, default action đã bị huỷ xong.
+    if (shouldIgnoreKey(ev.target)) return
     const dir = dirFromKey(ev.key)
     if (dir === null) return
     ev.preventDefault()
