@@ -1,0 +1,34 @@
+/* SINH TỰ ĐỘNG bởi scripts/gen-tokens.mjs — đừng sửa tay.
+   Nguồn sự thật là src/theme/palette.ts. Giá trị lấy từ §B11 Design System. */
+:root{
+  --page:#FBF6EC;
+  --board:#B9A894;
+  --slot:#D2C6B5;
+  --text:#2A1C0C;
+  --text-muted:#5B4A38;
+  --text-on-dark:#FFF8EE;
+  --accent:#F6C177;
+  --btn:#8F4A22;
+  --ok:#1B5E20;
+  --danger:#B3261E;
+  --focus:#1B6EF3;
+  --t2:#F1E8E0;
+  --t4:#E8DBC4;
+  --t8:#F4C19C;
+  --t16:#F6A581;
+  --t32:#F6836A;
+  --t64:#C54A2D;
+  --t128:#B34120;
+  --t256:#A43519;
+  --t512:#912A1D;
+  --t1024:#7A2531;
+  --t2048:#60223F;
+  --t4096:#442142;
+  --t8192:#271D44;
+  --board:clamp(280px, min(92vmin, 560px), 560px);
+  --gap:calc(var(--board) * 0.03);
+  --cell:calc((var(--board) - 5 * var(--gap)) / 4);
+  --radius-tile:calc(var(--cell) * 0.06);
+}
+[data-theme="dark"]{--page:#17161A;--text:#F2EDE4;--text-muted:#B9B2A6;--focus:#8AB4F8;--board:#2A2730;--slot:#332F3A;}
+[data-theme="contrast"]{--page:#000;--text:#FFF;--board:#000;--slot:#111;--focus:#FFFF00;}
