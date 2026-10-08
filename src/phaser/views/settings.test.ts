@@ -954,6 +954,9 @@ describe('createSettings — controlRects: chỗ đặt bốn ô nhập DOM', ()
     expect(rects.haptics).toEqual(boxOf(first!))
     expect(rects.reducedMotion).toEqual(boxOf(second!))
     expect(rects.theme).toEqual(boxOf(themeButton(s)!))
+    // Nút Đóng: chỗ đặt nút Đóng của DOM, rộng bằng lòng card.
+    expect(rects.close).toEqual(boxOf(closeButton(s)!))
+    expect(rects.close.h).toBe(48)
   })
 
   it('slider: ôm rãnh ĐANG VẼ, cao 44 px — không phải ô kéo rộng cố định 200 px', () => {

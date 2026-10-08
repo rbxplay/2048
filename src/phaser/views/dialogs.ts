@@ -334,7 +334,12 @@ export function createDialogs(
     body.setPosition(cx, y + CARD_PAD + CLOSE_STRIP + TITLE_BODY_GAP)
     const bw = buttonWidth()
     buttons.forEach((b, i) => {
-      const by = y + h - CARD_PAD - BTN_H - i * (BTN_H + BTN_GAP)
+      // Nút đầu bảng `BUTTONS` nằm TRÊN CÙNG, các nút sau xếp xuống dưới, cả cụm
+      // dán đáy card. Thứ tự vẽ từ trên xuống phải trùng thứ tự của `buttonLabels`
+      // — đó cũng là thứ tự Tab của các nút DOM nằm ngay trên chúng; xếp ngược
+      // (nút đầu ở dưới cùng) là focus đi từ dưới lên, trái với mắt nhìn.
+      const fromBottom = buttons.length - 1 - i
+      const by = y + h - CARD_PAD - BTN_H - fromBottom * (BTN_H + BTN_GAP)
       b.bg.setPosition(cx, by + BTN_H / 2).setSize(bw, BTN_H)
       syncHitArea(b.bg, bw)
       // Nhãn canh giữa nút; canh trái kèm một hằng số bù dọc là ý định canh giữa

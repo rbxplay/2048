@@ -88,11 +88,12 @@ export function fitRing(rect: A11yRect, viewport: Viewport): A11yRect {
  *  - D-pad và bánh răng: luôn ở chỗ canvas vẽ chúng.
  *  - Nút dialog: chỉ khi dialog đang MỞ THẬT. `'closing'` thì dialog DOM đã bị
  *    gỡ rồi, không còn nút nào để đặt.
- *  - Bốn ô nhập cài đặt: lên đúng slider / toggle / nút theme khi bảng Settings
- *    đang mở. Bảng đóng thì canvas KHÔNG vẽ chúng ở đâu cả, mà ô nhập vẫn phải
- *    nằm trong cây accessibility và thứ tự tab (§12.1) — khi đó chúng đứng trên
- *    bánh răng, thứ duy nhất trên màn hình đại diện cho "cài đặt", để focus
- *    không rơi vào chỗ vô hình.
+ *  - Bốn ô nhập cài đặt và nút Đóng: lên đúng slider / toggle / nút theme / nút
+ *    Đóng khi bảng Settings đang mở. Bảng đóng thì canvas KHÔNG vẽ chúng ở đâu
+ *    cả. Bốn ô nhập vẫn phải nằm trong cây accessibility (§12.1) nhưng đã rời
+ *    thứ tự Tab (`bridge.setSettingsOpen`); chúng đứng trên bánh răng — thứ duy
+ *    nhất trên màn hình đại diện cho "cài đặt" — để trình đọc màn hình nào vẽ
+ *    khung theo hộp phần tử thì khung đó không rơi vào góc màn hình.
  */
 export function placementFor(src: PlacementSources): A11yPlacement {
   const at = (box: Box): A11yRect => fitRing(toPage(box, src.frame), src.viewport)
@@ -111,6 +112,8 @@ export function placementFor(src: PlacementSources): A11yPlacement {
     haptics: open ? at(c.haptics) : gear,
     reducedMotion: open ? at(c.reducedMotion) : gear,
     theme: open ? at(c.theme) : gear,
+    // Nút Đóng của DOM bị `hidden` khi bảng đóng, nên hộp lúc đó không ai thấy.
+    settingsClose: open ? at(c.close) : gear,
     dialogButtons: src.dialog.phase === 'open' ? src.dialog.buttons.map(at) : [],
   }
 }

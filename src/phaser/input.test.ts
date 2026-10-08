@@ -66,6 +66,13 @@ function makeScene() {
       for (const h of [...handlers]) h(ev)
       return ev
     },
+    /**
+     * Phát LẠI một event đã bắn — đúng thứ `KeyboardPlugin.update()` của Phaser
+     * làm: nó chạy lại cả hàng đợi ở mỗi sự kiện phím gốc, với cùng đối tượng.
+     */
+    replay(ev: KeyEvent): void {
+      for (const h of [...handlers]) h(ev)
+    },
     listeners: (): number => handlers.length,
     /** Scene chưa có bàn phím — đường `keyboard === null` của Phaser. */
     withoutKeyboard(): Parameters<typeof attachKeyboardInput>[0] {
@@ -192,6 +199,63 @@ describe('attachKeyboardInput — nhường phím cho ô nhập DOM (R19, §12.1
       expect(ev.preventDefault, tag).not.toHaveBeenCalled()
     }
     expect(dirs).toEqual([])
+  })
+})
+
+/**
+ * Lỗi có thật, đo trên trình duyệt: `KeyboardPlugin.update()` chạy lại TOÀN BỘ
+ * hàng đợi ở mỗi sự kiện phím gốc, hàng đợi chỉ xoá ở cuối khung hình, và lưới
+ * chống trùng của Phaser chỉ so với sự kiện ngay trước. `←` rồi `→` dồn trong
+ * một khung hình ra 3 lần `←` + 2 lần `→` (năm nước đi cho hai lần gõ); một lần
+ * `Esc` sau phím khác chạy `onEscape` hai lần.
+ */
+describe('attachKeyboardInput — mỗi sự kiện phím gốc chỉ tính MỘT lần', () => {
+  it('Phaser phát lại cùng một event mũi tên: chỉ một Dir, chỉ một preventDefault', () => {
+    const s = makeScene()
+    const dirs: string[] = []
+    attachKeyboardInput(s.scene, (d) => dirs.push(d), () => {})
+
+    const ev = s.press('ArrowLeft')
+    s.replay(ev)
+    s.replay(ev)
+    expect(dirs).toEqual(['left'])
+    expect(ev.preventDefault).toHaveBeenCalledTimes(1)
+  })
+
+  it('đúng chuỗi của hàng đợi: ← rồi → trong một khung hình ra đúng HAI nước', () => {
+    const s = makeScene()
+    const dirs: string[] = []
+    attachKeyboardInput(s.scene, (d) => dirs.push(d), () => {})
+
+    // keydown ← ; keydown → làm Phaser quét lại [←, →]; keyup → quét lại lần nữa.
+    const left = s.press('ArrowLeft')
+    s.replay(left)
+    const right = s.press('ArrowRight')
+    s.replay(left)
+    s.replay(right)
+    expect(dirs).toEqual(['left', 'right'])
+  })
+
+  it('Esc bị phát lại sau một phím khác: onEscape chỉ chạy một lần', () => {
+    const s = makeScene()
+    let escapes = 0
+    attachKeyboardInput(s.scene, () => {}, () => escapes++)
+
+    const x = s.press('x')
+    const esc = s.press('Escape')
+    s.replay(x)
+    s.replay(esc)
+    expect(escapes).toBe(1)
+  })
+
+  it('hai lần GÕ thật của cùng một phím là hai event khác nhau — vẫn tính cả hai', () => {
+    const s = makeScene()
+    const dirs: string[] = []
+    attachKeyboardInput(s.scene, (d) => dirs.push(d), () => {})
+
+    s.press('ArrowLeft')
+    s.press('ArrowLeft')
+    expect(dirs).toEqual(['left', 'left'])
   })
 })
 

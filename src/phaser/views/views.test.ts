@@ -488,6 +488,9 @@ describe('createHud — gearRect: chỗ đặt nút Settings của DOM', () => {
       h: GEAR_SIZE,
     })
     expect(hud.gearRect()).toEqual(expected())
+    // A11Y-07 từ nguồn: cỡ nút DOM là cỡ hộp này, không còn `min-width` ở CSS.
+    expect(hud.gearRect().w).toBeGreaterThanOrEqual(44)
+    expect(hud.gearRect().h).toBeGreaterThanOrEqual(44)
     // Mép phải bánh răng trùng mép phải hàng HUD.
     expect(hud.gearRect().x + GEAR_SIZE).toBeCloseTo(layout320.hudX + layout320.hudWidth)
 
@@ -694,6 +697,49 @@ describe('createDialogs — buttonRects: chỗ đặt nút DOM của dialog', ()
     // Hai nút là hai hộp KHÁC nhau, không chồng lên nhau.
     const [a, b] = d.buttonRects()
     expect(Math.abs(a!.y - b!.y)).toBeGreaterThanOrEqual(48)
+  })
+
+  it('thứ tự VẼ từ trên xuống trùng thứ tự buttonLabels — tức thứ tự Tab của DOM', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('win', { score: 8, best: 8 })
+    const [keepPlaying, newGame] = d.buttonRects()
+    // "Chơi tiếp" (nút đầu, nhận focus khi dialog mở) nằm TRÊN "Ván mới".
+    expect(keepPlaying!.y).toBeLessThan(newGame!.y)
+    expect(newGame!.y - keepPlaying!.y).toBe(48 + 12)
+    // Bấm nút trên cùng vẫn là 'keep-playing': hình và action đi cùng nhau.
+    const actions: string[] = []
+    const s2 = makeScene()
+    const d2 = dialogs(s2, layout320, actions)
+    d2.open('win', { score: 8, best: 8 })
+    const top = [...actionButtons(s2)].sort((a, b) => a.y - b.y)[0]!
+    top.press()
+    expect(actions).toEqual(['keep-playing'])
+  })
+
+  it('cụm nút vẫn dán đáy card: nút CUỐI cách đáy đúng lề 20 px', () => {
+    for (const kind of ['win', 'gameover'] as const) {
+      const s = makeScene()
+      const d = dialogs(s, layout320, [])
+      d.open(kind, { score: 8, best: 8 })
+      const rects = d.buttonRects()
+      const cardH = 180 + rects.length * (48 + 12)
+      const cardBottom = layout320.height / 2 + cardH / 2
+      const last = rects.at(-1)!
+      expect(last.y + last.h, kind).toBeCloseTo(cardBottom - 20)
+    }
+  })
+
+  it('mọi nút ≥ 44×44 ở mọi viewport bố cục cam kết (A11Y-07)', () => {
+    for (const [w, h] of [[260, 360], [260, 400], [320, 568], [640, 360], [1280, 720]] as const) {
+      const s = makeScene()
+      const d = dialogs(s, computeLayout(w, h), [])
+      d.open('win', { score: 8, best: 8 })
+      for (const r of d.buttonRects()) {
+        expect(r.w, `${w}×${h}`).toBeGreaterThanOrEqual(44)
+        expect(r.h, `${w}×${h}`).toBeGreaterThanOrEqual(44)
+      }
+    }
   })
 
   it('mở lại với loại khác thì số hộp theo số nút mới', () => {

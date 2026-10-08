@@ -109,6 +109,13 @@ export function createOverlayPresenter(deps: {
   getStrings: () => Strings
   getInfo: () => { score: number; best: number }
   onAction: (action: DialogAction) => void
+  /**
+   * Đặt lại nút DOM lên nút canvas (`app/placement.ts`). Gọi ở ĐÂY chứ không ở
+   * nơi gọi `open`/`close`: mọi đường mở/đóng overlay (nước đi, `Esc`, pause,
+   * resume, khôi phục save) đều qua cửa này, nên không đường nào quên được —
+   * nút dialog vừa dựng mà chưa có chỗ là focus ring vô hình.
+   */
+  place: () => void
 }): OverlayPresenter {
   function open(overlay: 'win' | 'over'): void {
     const kind = dialogKindFor(overlay)
@@ -126,12 +133,14 @@ export function createOverlayPresenter(deps: {
         deps.onAction(action ?? 'close')
       },
     })
+    deps.place()
   }
 
   function close(): void {
     deps.dialogs.close()
     // Idempotent ở tầng cầu nối, nên gọi lúc không có dialog là no-op thật.
     deps.bridge.closeDialog()
+    deps.place()
   }
 
   return {

@@ -32,6 +32,7 @@ import {
 } from './app/overlay'
 import { placementFor } from './app/placement'
 import { present, type PresentSinks } from './app/present'
+import { createSettingsPresenter, type SettingsPresenter } from './app/settings-panel'
 import { createSaveGate, PLAY_SAVE_MS } from './app/save-gate'
 import {
   applyInput, createSession, keepPlaying, newGame, toSave,
@@ -137,6 +138,7 @@ async function boot(): Promise<void> {
   let dpad: ReturnType<typeof createDpad> | null = null
   let settings: ReturnType<typeof createSettings> | null = null
   let overlayView: OverlayPresenter | null = null
+  let settingsPanel: SettingsPresenter | null = null
 
   /** Bắt đầu phiên chơi — mốc so cho chính sách quảng cáo 30 giây (§A8). */
   let sessionStartedAt = performance.now()
@@ -160,6 +162,7 @@ async function boot(): Promise<void> {
   bridge.mountControls({
     onDir,
     onSettings: openSettings,
+    onSettingsClose: closeSettings,
     onSettingsChange: applySetting,
     initial: state.settings,
   })
@@ -270,30 +273,26 @@ async function boot(): Promise<void> {
   /** Mở overlay ở CẢ HAI tầng — xem `app/overlay.ts`. */
   function showOverlay(kind: 'win' | 'over'): void {
     overlayView?.open(kind)
-    // Nút DOM của dialog vừa được dựng mới, chưa có chỗ.
-    placeControls()
   }
 
   /** Đóng overlay ở cả hai tầng. Idempotent ở cả hai tầng. */
   function closeOverlay(): void {
     overlayView?.close()
-    placeControls()
   }
 
   // ---------- cài đặt ----------
 
+  /**
+   * Mở/đóng bảng Settings ở cả hai tầng — cổng chặn và việc chuyển focus nằm ở
+   * `app/settings-panel.ts`. Bánh răng canvas, nút Cài đặt DOM, nút Đóng DOM và
+   * `Esc` đều tới hai hàm này.
+   */
   function openSettings(): void {
-    sfx.unlock()
-    settings?.open(state.settings, closeSettings)
-    // Bốn ô nhập DOM rời bánh răng, lên đúng slider / toggle / nút theme.
-    placeControls()
+    settingsPanel?.open()
   }
 
   function closeSettings(): void {
-    // Đóng bảng không đổi state: mọi thay đổi đã đi qua `applySetting` ngay lúc
-    // người chơi tác động, nên không còn gì để chốt. Chỉ còn việc đưa bốn ô nhập
-    // DOM về lại bánh răng — canvas hết vẽ chỗ của chúng rồi.
-    placeControls()
+    settingsPanel?.close()
   }
 
   /**
@@ -444,8 +443,6 @@ async function boot(): Promise<void> {
 
   function handleEscape(): void {
     if (settings?.isOpen === true) {
-      settings.close()
-      // `settings.close()` không gọi `onClose` (chỉ nút Close của canvas gọi).
       closeSettings()
       return
     }
@@ -501,6 +498,16 @@ async function boot(): Promise<void> {
       getStrings: () => strings,
       getInfo: () => ({ score: state.score, best: state.best }),
       onAction: applyAction,
+      place: placeControls,
+    })
+    settingsPanel = createSettingsPresenter({
+      settings,
+      bridge,
+      isPaused: () => paused,
+      overlayPhase: () => overlayView?.phase ?? 'closed',
+      getSettings: () => state.settings,
+      onOpen: () => { sfx.unlock() },
+      place: placeControls,
     })
 
     sc.events.on('swipe', (dir: Dir) => {

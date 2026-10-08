@@ -82,10 +82,10 @@ const ROW_COUNT = 4
 const SCRIM_ALPHA = 0.6
 
 /**
- * Hộp bao bốn điều khiển của bảng, toạ độ game — mỗi khoá ứng với một ô nhập DOM
- * của `a11y/bridge.ts`.
+ * Hộp bao các điều khiển của bảng, toạ độ game — mỗi khoá ứng với một điều khiển
+ * DOM của `a11y/bridge.ts`: bốn ô nhập và nút Đóng.
  */
-export type SettingsRects = { sfx: Box; haptics: Box; reducedMotion: Box; theme: Box }
+export type SettingsRects = { sfx: Box; haptics: Box; reducedMotion: Box; theme: Box; close: Box }
 
 export type Settings = {
   open(current: SaveSettings, onClose: () => void): void
@@ -116,7 +116,7 @@ export type Settings = {
    * qua đây; tầng ghép nối gọi khi state đổi.
    */
   setReducedMotion(on: boolean): void
-  /** Chỗ đặt bốn ô nhập DOM. Hình học của lần xếp layout gần nhất. */
+  /** Chỗ đặt các điều khiển DOM của bảng. Hình học của lần xếp layout gần nhất. */
   controlRects(): SettingsRects
   destroy(): void
 }
@@ -600,6 +600,7 @@ export function createSettings(
         haptics: centredBox(hapticsHit),
         reducedMotion: centredBox(motionHit),
         theme: centredBox(themeBtn),
+        close: centredBox(closeBtn),
       }
     },
     destroy() {

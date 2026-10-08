@@ -44,6 +44,7 @@ function sources(over: Partial<PlacementSources> = {}): PlacementSources {
         haptics: box(766, 300, 44, 44),
         reducedMotion: box(766, 356, 44, 44),
         theme: box(690, 410, 120, 48),
+        close: box(450, 474, 380, 48),
       },
     },
     ...over,
@@ -126,6 +127,7 @@ describe('placementFor — điều khiển nào đứng ở đâu, theo trạng 
     expect(p.haptics).toEqual({ x: 766, y: 300, w: 44, h: 44 })
     expect(p.reducedMotion).toEqual({ x: 766, y: 356, w: 44, h: 44 })
     expect(p.theme).toEqual({ x: 690, y: 410, w: 120, h: 48 })
+    expect(p.settingsClose).toEqual({ x: 450, y: 474, w: 380, h: 48 })
   })
 
   it("Settings 'closing' (card đang mờ) đã hết hiệu lực: ô nhập về bánh răng ngay", () => {
@@ -158,6 +160,7 @@ describe('placementFor — điều khiển nào đứng ở đâu, theo trạng 
     const moved = placementFor({ ...open, frame: frame(1280, 720, { left: 7, top: 9 }) })
     const all = (p: typeof base) => [
       ...Object.values(p.dpad), p.settingsButton, p.sfx, p.haptics, p.reducedMotion, p.theme,
+      p.settingsClose,
       ...p.dialogButtons,
     ]
     all(moved).forEach((r, i) => {

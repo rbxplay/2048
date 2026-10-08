@@ -528,6 +528,7 @@ describe('inert — nền bị khoá trong lúc dialog mở', () => {
     bridge.mountControls({
       onDir: () => {},
       onSettings: () => {},
+      onSettingsClose: () => {},
       onSettingsChange: () => {},
       initial: { sfxVolume: 0.7, haptics: true, reducedMotion: false, theme: 'light' },
     })
@@ -588,6 +589,7 @@ describe('R41 — setDpadVisible (pause ẩn D-pad ở cả hai tầng)', () => 
     bridge.mountControls({
       onDir: () => {},
       onSettings: () => {},
+      onSettingsClose: () => {},
       onSettingsChange: () => {},
       initial: { sfxVolume: 0.7, haptics: true, reducedMotion: false, theme: 'light' },
     })
@@ -672,14 +674,17 @@ describe('§12.2 — cầu nối không tự đổi trạng thái của mình', 
   })
 })
 
-type Calls = { dirs: Dir[]; patches: A11ySettingsPatch[]; settings: number }
+type Calls = { dirs: Dir[]; patches: A11ySettingsPatch[]; settings: number; closes: number }
 
 function mount(initial: Partial<A11ySettingsState> = {}): Calls {
-  const calls: Calls = { dirs: [], patches: [], settings: 0 }
+  const calls: Calls = { dirs: [], patches: [], settings: 0, closes: 0 }
   bridge.mountControls({
     onDir: (dir) => calls.dirs.push(dir),
     onSettings: () => {
       calls.settings += 1
+    },
+    onSettingsClose: () => {
+      calls.closes += 1
     },
     onSettingsChange: (patch) => calls.patches.push(patch),
     initial: { sfxVolume: 0.5, haptics: true, reducedMotion: false, theme: 'light', ...initial },
@@ -694,6 +699,9 @@ const sfx = () => controlsRoot().querySelector<HTMLInputElement>('input[type="ra
 const checkboxes = () =>
   Array.from(controlsRoot().querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
 const themeSelect = () => controlsRoot().querySelector<HTMLSelectElement>('select')!
+const closeButton = () =>
+  controlsRoot().querySelector<HTMLButtonElement>('.a11y-settings-close')!
+const panel = () => controlsRoot().querySelector<HTMLElement>('.a11y-settings-panel')!
 
 describe('mountControls — §12.1: nút và ô nhập DOM thật', () => {
   it('bốn nút D-pad thật, nhãn từ Strings, đúng thứ tự chữ thập của §B8', () => {
@@ -799,7 +807,8 @@ describe('mountControls — §12.1: nút và ô nhập DOM thật', () => {
     mount()
     mount()
     expect(dpadButtons()).toHaveLength(4)
-    expect(controlsRoot().querySelectorAll('button')).toHaveLength(5)
+    // 4 D-pad + Cài đặt + Đóng (của bảng Settings).
+    expect(controlsRoot().querySelectorAll('button')).toHaveLength(6)
     expect(checkboxes()).toHaveLength(2)
   })
 
@@ -858,6 +867,7 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     haptics: rect(250, 200, 44, 44),
     reducedMotion: rect(250, 256, 44, 44),
     theme: rect(180, 310, 120, 48),
+    settingsClose: rect(40, 380, 240, 48),
     dialogButtons: [],
     ...over,
   })
@@ -878,7 +888,8 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     mount()
     open([en.keepPlaying, en.newGame])
     const ctl = Array.from(controlsRoot().querySelectorAll('button, input, select'))
-    expect(ctl).toHaveLength(4 + 1 + 4 + 2)
+    // 4 D-pad + Cài đặt + 4 ô nhập + Đóng + 2 nút dialog.
+    expect(ctl).toHaveLength(4 + 1 + 4 + 1 + 2)
     for (const el of ctl) expect(el.classList.contains('a11y-ctl'), el.outerHTML).toBe(true)
     for (const el of controlsRoot().querySelectorAll('h2, .a11y-field__text')) {
       expect(el.classList.contains('a11y-sr'), el.outerHTML).toBe(true)
@@ -913,7 +924,8 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     expect(box(checkboxes()[0]!)).toEqual(px(p.haptics))
     expect(box(checkboxes()[1]!)).toEqual(px(p.reducedMotion))
     expect(box(themeSelect())).toEqual(px(p.theme))
-    for (const el of [settingsButton(), sfx(), ...checkboxes(), themeSelect()]) {
+    expect(box(closeButton())).toEqual(px(p.settingsClose))
+    for (const el of [settingsButton(), sfx(), ...checkboxes(), themeSelect(), closeButton()]) {
       expect(el.hasAttribute('data-placed')).toBe(true)
     }
   })
@@ -970,6 +982,8 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
 
   it('không điều khiển nào bị aria-hidden hay hidden vì được đặt chỗ', () => {
     mount()
+    // Bảng mở: nút Đóng cũng phải có mặt (bảng đóng thì nó `hidden` có chủ ý).
+    bridge.setSettingsOpen(true)
     bridge.placeControls(placement())
     for (const el of controlsRoot().querySelectorAll<HTMLElement>('.a11y-ctl')) {
       expect(el.getAttribute('aria-hidden')).toBeNull()
@@ -982,6 +996,148 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     mount()
     bridge.destroy()
     expect(() => bridge.placeControls(placement({ dialogButtons: [rect(0, 0)] }))).not.toThrow()
+  })
+})
+
+/**
+ * Bảng Settings ở tầng DOM đi theo bảng của canvas. Lỗi mà khối này khoá: đóng
+ * bảng mà focus nằm lại trên một ô nhập (nay đã không còn hình vẽ nào bên dưới)
+ * thì Space vẫn lật cài đặt trong khi màn hình không đổi gì, và phím mũi tên
+ * không chơi được vì `shouldIgnoreKey` nhường phím cho ô nhập.
+ */
+describe('setSettingsOpen — bảng Settings ở tầng DOM', () => {
+  const inputs = () => [sfx(), ...checkboxes(), themeSelect()]
+  const dpad = () => controlsRoot().querySelector<HTMLElement>('.a11y-dpad')!
+
+  it('bảng ĐÓNG (mặc định): bốn ô nhập rời thứ tự Tab nhưng CÒN trong cây a11y', () => {
+    mount({ haptics: true })
+    for (const el of inputs()) {
+      expect(el.getAttribute('tabindex'), el.outerHTML).toBe('-1')
+      // Không phải bằng cách gỡ khỏi cây: §12.1 bắt chúng luôn có mặt.
+      expect(el.hidden).toBe(false)
+      expect(el.closest('[inert], [hidden], [aria-hidden="true"]')).toBeNull()
+    }
+    // Tên, vai trò và trạng thái vẫn nguyên.
+    expect(sfx().type).toBe('range')
+    expect(checkboxes()[0]!.checked).toBe(true)
+    expect(themeSelect().getAttribute('aria-label')).toBe(en.theme)
+    expect(sfx().closest('label')!.textContent).toContain(en.sound)
+  })
+
+  it('bảng ĐÓNG: nút Đóng bị hidden — "Đóng" khi không có gì mở là nút nói dối', () => {
+    mount()
+    expect(closeButton().hidden).toBe(true)
+  })
+
+  it('bốn ô nhập và nút Đóng chung một nhóm có tên "Settings", nút Đóng đứng cuối', () => {
+    mount()
+    expect(panel().getAttribute('role')).toBe('group')
+    expect(panel().getAttribute('aria-label')).toBe(en.settings)
+    const order = Array.from(panel().querySelectorAll('input, select, button'))
+    expect(order).toEqual([...inputs(), closeButton()])
+    expect(closeButton().textContent).toBe(en.close)
+  })
+
+  it('nhãn nút Đóng và tên nhóm đổi theo ngôn ngữ', () => {
+    mount()
+    bridge.setStrings(viStrings)
+    expect(closeButton().textContent).toBe(viStrings.close)
+    expect(panel().getAttribute('aria-label')).toBe(viStrings.settings)
+  })
+
+  it('MỞ: ô nhập và nút Đóng vào thứ tự Tab, focus vào điều khiển đầu của bảng', () => {
+    mount()
+    settingsButton().focus()
+    bridge.setSettingsOpen(true)
+    for (const el of inputs()) expect(el.hasAttribute('tabindex'), el.outerHTML).toBe(false)
+    expect(closeButton().hidden).toBe(false)
+    expect(document.activeElement).toBe(sfx())
+  })
+
+  it('MỞ: nền bị inert bằng CÙNG cơ chế với dialog; chính bảng thì không', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    expect(boardRoot().hasAttribute('inert')).toBe(true)
+    expect(dpad().hasAttribute('inert')).toBe(true)
+    expect(settingsButton().hasAttribute('inert')).toBe(true)
+    expect(panel().hasAttribute('inert')).toBe(false)
+    expect(bridge.root.hasAttribute('inert')).toBe(false)
+  })
+
+  it('ĐÓNG khi focus đang ở trong bảng: focus về nút Cài đặt, ngay lập tức', () => {
+    mount()
+    for (const pick of [() => checkboxes()[0]!, themeSelect, closeButton]) {
+      bridge.setSettingsOpen(true)
+      pick().focus()
+      bridge.setSettingsOpen(false)
+      expect(document.activeElement).toBe(settingsButton())
+    }
+  })
+
+  it('ĐÓNG: gỡ inert, ô nhập rời thứ tự Tab trở lại, nút Đóng hidden trở lại', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    bridge.setSettingsOpen(false)
+    expect(controlsRoot().querySelectorAll('[inert]')).toHaveLength(0)
+    expect(boardRoot().hasAttribute('inert')).toBe(false)
+    for (const el of inputs()) expect(el.getAttribute('tabindex')).toBe('-1')
+    expect(closeButton().hidden).toBe(true)
+  })
+
+  it('ĐÓNG khi focus ở NGOÀI bảng thì không giật focus', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    ;(document.activeElement as HTMLElement).blur()
+    bridge.setSettingsOpen(false)
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('idempotent: mở hai lần không dời focus lần hai; đóng hai lần không ném', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    checkboxes()[1]!.focus()
+    bridge.setSettingsOpen(true)
+    expect(document.activeElement).toBe(checkboxes()[1])
+    bridge.setSettingsOpen(false)
+    expect(() => bridge.setSettingsOpen(false)).not.toThrow()
+  })
+
+  it('nút Đóng phát onSettingsClose đúng một lần — cầu nối KHÔNG tự đóng bảng', () => {
+    const calls = mount()
+    bridge.setSettingsOpen(true)
+    closeButton().click()
+    expect(calls.closes).toBe(1)
+    // §12.2: đóng là việc của tầng ghép nối, gọi từ state.
+    expect(closeButton().hidden).toBe(false)
+  })
+
+  it('dialog mở chồng lên bảng: chỉ dialog còn sống; dialog đóng thì bảng sống lại', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    open([en.retry])
+    expect(panel().hasAttribute('inert')).toBe(true)
+    expect(dialogHost()!.hasAttribute('inert')).toBe(false)
+    bridge.closeDialog()
+    expect(panel().hasAttribute('inert')).toBe(false)
+    // Bảng vẫn mở nên nền vẫn khoá — gỡ sạch ở đây là lỗi của bản hai-hàm.
+    expect(dpad().hasAttribute('inert')).toBe(true)
+  })
+
+  it('đóng bảng trong lúc dialog đang mở thì nền VẪN bị khoá', () => {
+    mount()
+    bridge.setSettingsOpen(true)
+    open([en.retry])
+    bridge.setSettingsOpen(false)
+    expect(dpad().hasAttribute('inert')).toBe(true)
+    expect(panel().hasAttribute('inert')).toBe(true)
+  })
+
+  it('chưa mountControls hoặc đã destroy thì là no-op', () => {
+    expect(() => bridge.setSettingsOpen(true)).not.toThrow()
+    expect(boardRoot().hasAttribute('inert')).toBe(false)
+    mount()
+    bridge.destroy()
+    expect(() => bridge.setSettingsOpen(true)).not.toThrow()
   })
 })
 

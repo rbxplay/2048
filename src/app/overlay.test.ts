@@ -57,11 +57,14 @@ let bridge: A11yBridge
 let dialogs: ReturnType<typeof fakeDialogs>
 let actions: DialogAction[]
 let opened: number
+/** Mỗi lần `place()` được gọi: số nút dialog DOM đang có lúc đó. */
+let placed: number[]
 
 beforeEach(() => {
   document.body.innerHTML = ''
   actions = []
   opened = 0
+  placed = []
   bridge = createA11yBridge()
   bridge.setStrings(en)
   document.body.appendChild(bridge.root)
@@ -81,6 +84,10 @@ function presenter() {
     onAction: (action) => {
       opened += 1
       actions.push(action)
+    },
+    place: () => {
+      // Chụp ĐÚNG lúc được gọi: nút DOM phải đã có mặt (mở) / đã bị gỡ (đóng).
+      placed.push(domButtons().length)
     },
   })
 }
@@ -266,5 +273,33 @@ describe('ba trạng thái của overlay — cửa sổ mờ dần không phải
     const p = presenter()
     p.close()
     expect(p.phase).toBe('closed')
+  })
+})
+
+/**
+ * Nút DOM nằm trên nút canvas (spec §12.1, Amend (4)). Việc đặt chỗ phải đi cùng
+ * MỌI lần mở/đóng — nó nằm trong presenter để không đường nào (nước đi, `Esc`,
+ * pause, resume, khôi phục save) quên được.
+ */
+describe('OverlayPresenter — đặt lại nút DOM ở mọi lần mở/đóng', () => {
+  it('mở: gọi place SAU khi nút DOM đã dựng — nút mới phải có chỗ ngay', () => {
+    presenter().open('win')
+    expect(placed).toEqual([2])
+  })
+
+  it('đóng: gọi place sau khi dialog DOM đã bị gỡ', () => {
+    const p = presenter()
+    p.open('over')
+    p.close()
+    expect(placed).toEqual([1, 0])
+  })
+
+  it('mở lại sau khi đóng (đường resume) cũng đặt lại', () => {
+    const p = presenter()
+    p.open('over')
+    p.close()
+    dialogs.finishClose()
+    p.open('over')
+    expect(placed).toEqual([1, 0, 1])
   })
 })

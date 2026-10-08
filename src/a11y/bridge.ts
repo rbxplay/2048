@@ -72,6 +72,8 @@ export type A11yPlacement = {
   haptics: A11yRect
   reducedMotion: A11yRect
   theme: A11yRect
+  /** Nút Đóng của bảng Settings. */
+  settingsClose: A11yRect
   /** Theo thứ tự nút của dialog đang mở; rỗng khi không có dialog. */
   dialogButtons: readonly A11yRect[]
 }
@@ -79,6 +81,12 @@ export type A11yPlacement = {
 export type MountControlsOptions = {
   onDir: (dir: Dir) => void
   onSettings: () => void
+  /**
+   * Nút Đóng của bảng Settings — cùng đường với nút Đóng trên canvas và `Esc`.
+   * Người dùng trình đọc màn hình cảm ứng không có `Esc`; thiếu nút này thì họ
+   * vào được bảng mà không ra được.
+   */
+  onSettingsClose: () => void
   onSettingsChange: (patch: A11ySettingsPatch) => void
   /** Giá trị ban đầu, đọc từ state — tầng này không tự bịa giá trị mặc định. */
   initial: A11ySettingsState
@@ -98,6 +106,15 @@ export type A11yBridge = {
    * trạng thái đổi (resize, mở/đóng dialog, mở/đóng Settings).
    */
   placeControls(placement: A11yPlacement): void
+  /**
+   * Bảng Settings của canvas vừa mở / vừa bắt đầu đóng.
+   *
+   * Mở: bốn ô nhập và nút Đóng vào thứ tự Tab, nền bị `inert` (cùng cơ chế với
+   * dialog), focus vào điều khiển đầu của bảng. Đóng: chúng rời thứ tự Tab —
+   * bốn ô nhập VẪN ở trong cây accessibility (§12.1) — và focus đang nằm trong
+   * bảng thì về nút Cài đặt. Idempotent.
+   */
+  setSettingsOpen(open: boolean): void
   /**
    * §9.5 + PRD:452 — khi nền tảng pause, D-pad biến mất. Bản DOM phải đi cùng
    * bản canvas, nếu không thì hai tầng nói hai chuyện khác nhau.
@@ -180,6 +197,9 @@ type Controls = {
   /** Vỏ bọc bốn nút mũi tên — cần giữ để ẩn/hiện cả cụm (§9.5). */
   dpad: HTMLDivElement
   settingsButton: HTMLButtonElement
+  /** Vỏ bọc bốn ô nhập + nút Đóng: thứ duy nhất KHÔNG bị `inert` khi bảng mở. */
+  panel: HTMLDivElement
+  closeButton: HTMLButtonElement
   sfx: HTMLInputElement
   haptics: HTMLInputElement
   reducedMotion: HTMLInputElement
@@ -250,6 +270,8 @@ export function createA11yBridge(): A11yBridge {
   let dialogEl: HTMLElement | null = null
   /** Nút của dialog đang mở, theo thứ tự hiện ra — đích của `placeControls`. */
   let dialogButtons: HTMLButtonElement[] = []
+  /** Bảng Settings của canvas đang mở — do tầng ghép nối báo, không tự suy. */
+  let settingsOpen = false
   let restoreFocusTo: HTMLElement | null = null
 
   function syncBoard(board: Board): void {
@@ -331,23 +353,28 @@ export function createA11yBridge(): A11yBridge {
   }
 
   /**
-   * Khoá tầng nền trong lúc dialog mở.
+   * Khoá tầng nền trong lúc có một lớp phủ: dialog, hoặc bảng Settings.
    *
    * `aria-modal="true"` chỉ *nói* với trình đọc màn hình rằng phần còn lại là nền;
    * nó KHÔNG chặn được chuột và bàn phím. `inert` mới chặn thật: phần tử `inert`
    * không nhận focus, không nhận click, và bị loại khỏi cây accessibility. Thiếu
    * nó thì nút D-pad và slider SFX phía sau dialog vẫn bấm được.
    *
+   * MỘT hàm cho cả hai lớp phủ, suy từ trạng thái chứ không bật/tắt theo lời
+   * gọi: thứ duy nhất còn sống là lớp phủ trên cùng — dialog nếu có (nó phủ lên
+   * cả bảng Settings), không thì bảng Settings. Hai hàm song song cho hai lớp
+   * phủ là hai chỗ để quên gỡ `inert` khi lớp kia vẫn còn.
+   *
    * TUYỆT ĐỐI không đụng tới `#game-container`: overlay của canvas nằm trong đó,
    * mà `inert` chặn luôn pointer event — bật lên là nút "Chơi tiếp" trên canvas
    * không bấm được nữa, đúng thứ Review Focus mục 1 cấm.
    */
-  function setBackgroundInert(on: boolean): void {
+  function syncInert(): void {
+    const alive: Element | null =
+      dialogEl !== null ? dialogHost : settingsOpen && controls !== null ? controls.panel : null
     const targets: Element[] = [boardRoot, ...Array.from(controlsRoot.children)]
     for (const el of targets) {
-      // Chính dialog nằm trong `controlsRoot` và phải giữ tương tác được.
-      if (el === dialogHost) continue
-      if (on) el.setAttribute('inert', '')
+      if (alive !== null && el !== alive) el.setAttribute('inert', '')
       else el.removeAttribute('inert')
     }
   }
@@ -387,7 +414,7 @@ export function createA11yBridge(): A11yBridge {
     dialogHost.appendChild(dialog)
     dialogEl = dialog
     restoreFocusTo = invokedFrom
-    setBackgroundInert(true)
+    syncInert()
 
     const first = dialog.querySelector('button')
     if (first !== null) first.focus()
@@ -408,7 +435,7 @@ export function createA11yBridge(): A11yBridge {
 
     dialog.removeEventListener('keydown', onDialogKeydown)
     dialog.remove()
-    setBackgroundInert(false)
+    syncInert()
 
     // Xoá vùng assertive. NVDA/JAWS so NỘI DUNG vùng live: gán lại đúng chuỗi
     // cũ — thua, bấm Retry, thua lần nữa — thì lần thứ hai bị im lặng. Xoá lúc
@@ -430,6 +457,8 @@ export function createA11yBridge(): A11yBridge {
       if (button !== undefined) button.textContent = s[DIR_LABEL[dir]]
     })
     c.settingsButton.textContent = s.settings
+    c.panel.setAttribute('aria-label', s.settings)
+    c.closeButton.textContent = s.close
     c.texts.sfx.textContent = s.sound
     c.texts.haptics.textContent = s.haptics
     c.texts.reducedMotion.textContent = s.reducedMotion
@@ -524,6 +553,11 @@ export function createA11yBridge(): A11yBridge {
 
     for (const input of [sfx, haptics, reducedMotion, theme]) input.className = CTL_CLASS
 
+    const closeButton = document.createElement('button')
+    closeButton.type = 'button'
+    closeButton.className = `a11y-settings-close ${CTL_CLASS}`
+    closeButton.addEventListener('click', () => opts.onSettingsClose())
+
     const texts = {
       sfx: textSpan(),
       haptics: textSpan(),
@@ -531,19 +565,27 @@ export function createA11yBridge(): A11yBridge {
       theme: textSpan(),
     }
 
-    controlsRoot.append(
-      dpad,
-      settingsButton,
+    // Bốn ô nhập và nút Đóng chung một nhóm có tên: trình đọc màn hình đọc "Cài
+    // đặt, nhóm" khi vào, và đây là MỘT phần tử để `syncInert` chừa lại khi bảng
+    // mở. Nút Đóng đứng cuối — đúng thứ tự từ trên xuống của bảng trên canvas.
+    const panel = document.createElement('div')
+    panel.className = 'a11y-settings-panel'
+    panel.setAttribute('role', 'group')
+    panel.append(
       field(texts.sfx, sfx, true),
       field(texts.haptics, haptics, false),
       field(texts.reducedMotion, reducedMotion, false),
       field(texts.theme, theme, true),
+      closeButton,
     )
+    controlsRoot.append(dpad, settingsButton, panel)
 
     controls = {
       buttons,
       dpad,
       settingsButton,
+      panel,
+      closeButton,
       sfx,
       haptics,
       reducedMotion,
@@ -553,9 +595,49 @@ export function createA11yBridge(): A11yBridge {
     }
     // Dựng điều khiển trong lúc dialog đang mở là chuyện hiếm, nhưng bất biến
     // "dialog mở thì nền bị khoá" phải đúng bất kể thứ tự gọi.
-    if (dialogEl !== null) setBackgroundInert(true)
+    syncInert()
     relabel()
     syncControls(opts.initial)
+    applySettingsOpen()
+  }
+
+  /**
+   * Chiếu `settingsOpen` lên thứ tự Tab của bảng.
+   *
+   * Bảng đóng thì canvas không vẽ điều khiển nào của nó, nên không có chỗ nào
+   * cho focus ring: bốn ô nhập rời thứ tự Tab bằng `tabindex="-1"` — KHÔNG phải
+   * `hidden`/`inert`, vì §12.1 bắt chúng luôn có mặt trong cây accessibility với
+   * đủ tên, vai trò và trạng thái. Nút Đóng thì khác: "Đóng" khi không có gì
+   * đang mở là một nút nói dối, nên nó `hidden` hẳn.
+   */
+  function applySettingsOpen(): void {
+    const c = controls
+    if (c === null) return
+    for (const input of [c.sfx, c.haptics, c.reducedMotion, c.theme]) {
+      if (settingsOpen) input.removeAttribute('tabindex')
+      else input.setAttribute('tabindex', '-1')
+    }
+    c.closeButton.hidden = !settingsOpen
+  }
+
+  function setSettingsOpen(open: boolean): void {
+    const c = controls
+    if (c === null || open === settingsOpen) return
+    settingsOpen = open
+    // Chụp TRƯỚC khi đổi gì: ẩn nút Đóng đang giữ focus là focus rơi về `body`.
+    const focusInPanel = c.panel.contains(document.activeElement)
+    if (open) applySettingsOpen()
+    syncInert()
+    if (open) {
+      // Điều khiển đầu của bảng (§B8: focus vào trong lớp phủ khi nó mở).
+      c.sfx.focus()
+      return
+    }
+    // Trả focus NGAY, rồi mới rút bảng khỏi thứ tự Tab: sau `syncInert()` nút Cài
+    // đặt đã hết `inert` nên nhận được focus. Focus ở ngoài bảng (người chơi bấm
+    // chuột lên canvas) thì để nguyên — giật focus khỏi chỗ họ đang đứng là sai.
+    if (focusInPanel) c.settingsButton.focus()
+    applySettingsOpen()
   }
 
   /**
@@ -584,6 +666,7 @@ export function createA11yBridge(): A11yBridge {
       place(c.haptics, placement.haptics)
       place(c.reducedMotion, placement.reducedMotion)
       place(c.theme, placement.theme)
+      place(c.closeButton, placement.settingsClose)
     }
     // Thiếu hộp cho một nút (canvas đang có ít nút hơn DOM) thì gỡ chỗ nút đó,
     // KHÔNG để nó nằm lại ở hộp của lần đặt trước — ring vẽ sai chỗ còn tệ hơn
@@ -626,6 +709,7 @@ export function createA11yBridge(): A11yBridge {
     pending = null
     dialogEl = null
     dialogButtons = []
+    settingsOpen = false
     restoreFocusTo = null
     controls = null
     cells.length = 0
@@ -642,6 +726,7 @@ export function createA11yBridge(): A11yBridge {
     mountControls,
     syncControls,
     placeControls,
+    setSettingsOpen,
     setDpadVisible,
     setStrings,
     destroy,

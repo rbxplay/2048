@@ -78,7 +78,26 @@ export function attachKeyboardInput(
   const kb = scene.input.keyboard
   if (kb === null) return () => {}
 
+  /**
+   * Sự kiện gốc đã xử lý rồi — mỗi lần gõ phím chỉ được tính MỘT lần.
+   *
+   * `KeyboardPlugin.update()` của Phaser chạy lại TOÀN BỘ hàng đợi ở mỗi sự kiện
+   * phím gốc (`KeyboardManager` phát `MANAGER_PROCESS` ngay trong listener), mà
+   * hàng đợi chỉ được xoá ở `POST_STEP`, cuối khung hình. Lưới chống trùng của
+   * nó chỉ so với sự kiện vừa xử lý NGAY TRƯỚC (`prevCode`/`prevTime`/`prevType`),
+   * nên hễ có phím khác chen vào cùng khung hình là sự kiện cũ được phát lại:
+   * `←` rồi `→` dồn trong một khung hình ra 3 lần `←` và 2 lần `→` — năm nước đi
+   * cho hai lần gõ — và một lần `Esc` sau phím khác thì chạy `onEscape` hai lần.
+   *
+   * Phaser phát lại ĐÚNG đối tượng sự kiện gốc, nên nhận dạng theo danh tính
+   * đối tượng là đủ và không đoán mò gì về thời gian. `WeakSet` để sự kiện đã
+   * qua được thu gom bình thường.
+   */
+  const handled = new WeakSet<KeyboardEvent>()
+
   const handler = (ev: KeyboardEvent): void => {
+    if (handled.has(ev)) return
+    handled.add(ev)
     // `Esc` xét TRƯỚC guard: đóng dialog bằng bàn phím phải chạy được cả khi
     // focus đang nằm trong một ô nhập (§A11, A11Y-04). Và `Esc` không bao giờ
     // `preventDefault()` — §B8 ghi MUST NOT.
