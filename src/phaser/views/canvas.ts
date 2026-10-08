@@ -71,6 +71,18 @@ export function hexFromInt(color: number): string {
 export type Box = { x: number; y: number; w: number; h: number }
 
 /**
+ * Hộp bao của một hình có gốc ở TÂM — mặc định của `Rectangle`, tức mọi ô bấm
+ * trong các view.
+ *
+ * Tầng a11y đặt nút DOM thật lên đúng hộp này (spec §12, Amend 2026-10-08 (4)),
+ * nên nó phải đọc từ CHÍNH hình đang nhận input chứ không tính lại từ `Layout`:
+ * hai công thức song song thì sớm muộn focus ring vẽ lệch khỏi nút.
+ */
+export function centredBox(go: { x: number; y: number; width: number; height: number }): Box {
+  return { x: go.x - go.width / 2, y: go.y - go.height / 2, w: go.width, h: go.height }
+}
+
+/**
  * `Graphics` không vẽ được bóng nhoè, nên `--shadow-float`
  * (`0 8px 28px rgba(0,0,0,.28)`, §B11:291) được XẤP XỈ bằng ba vòng cùng tâm,
  * nở dần và nhạt dần; tổng alpha ở lõi ≈ 0.28.

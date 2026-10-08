@@ -13,6 +13,8 @@
 //     (`OverlayPresenter`), kể cả ở `Esc`, `onPause` và `onResume`.
 //  3. Input bị chặn theo STATE, không theo listener: gỡ listener bàn phím là
 //     mất luôn đường `Esc` đóng dialog.
+//  4. Nút DOM nằm ĐÚNG TRÊN nút canvas của nó (`placeControls`), và hình học chỉ
+//     có một nguồn là các view — không có bản layout thứ hai cho tầng a11y.
 
 import Phaser from 'phaser'
 // Thứ tự import CSS: token trước, rồi khung trang, rồi tầng a11y.
@@ -28,6 +30,7 @@ import {
   overlayForStatus,
   type OverlayPresenter,
 } from './app/overlay'
+import { placementFor } from './app/placement'
 import { present, type PresentSinks } from './app/present'
 import { createSaveGate, PLAY_SAVE_MS } from './app/save-gate'
 import {
@@ -232,14 +235,49 @@ async function boot(): Promise<void> {
     present(sinks, state, step, locale)
   }
 
+  /**
+   * Đặt mọi điều khiển DOM lên nút canvas của nó — xem `app/placement.ts`.
+   *
+   * Gọi ở MỌI chỗ hình học hoặc trạng thái overlay đổi: resize, mở/đóng dialog,
+   * mở/đóng Settings. Hộp lấy từ chính các view đang vẽ; khung canvas đọc từ DOM
+   * thật chứ không giả định nó khớp 1:1 với trang.
+   */
+  function placeControls(): void {
+    if (hud === null || dpad === null || dialogs === null || settings === null) return
+    const box = game.canvas.getBoundingClientRect()
+    bridge.placeControls(
+      placementFor({
+        frame: {
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          gameWidth: game.scale.width,
+          gameHeight: game.scale.height,
+        },
+        viewport: {
+          width: document.documentElement.clientWidth,
+          height: document.documentElement.clientHeight,
+        },
+        dpad: dpad.buttonRects(),
+        gear: hud.gearRect(),
+        dialog: { phase: dialogs.phase, buttons: dialogs.buttonRects() },
+        settings: { phase: settings.phase, controls: settings.controlRects() },
+      }),
+    )
+  }
+
   /** Mở overlay ở CẢ HAI tầng — xem `app/overlay.ts`. */
   function showOverlay(kind: 'win' | 'over'): void {
     overlayView?.open(kind)
+    // Nút DOM của dialog vừa được dựng mới, chưa có chỗ.
+    placeControls()
   }
 
   /** Đóng overlay ở cả hai tầng. Idempotent ở cả hai tầng. */
   function closeOverlay(): void {
     overlayView?.close()
+    placeControls()
   }
 
   // ---------- cài đặt ----------
@@ -247,11 +285,15 @@ async function boot(): Promise<void> {
   function openSettings(): void {
     sfx.unlock()
     settings?.open(state.settings, closeSettings)
+    // Bốn ô nhập DOM rời bánh răng, lên đúng slider / toggle / nút theme.
+    placeControls()
   }
 
   function closeSettings(): void {
     // Đóng bảng không đổi state: mọi thay đổi đã đi qua `applySetting` ngay lúc
-    // người chơi tác động, nên không còn gì để chốt.
+    // người chơi tác động, nên không còn gì để chốt. Chỉ còn việc đưa bốn ô nhập
+    // DOM về lại bánh răng — canvas hết vẽ chỗ của chúng rồi.
+    placeControls()
   }
 
   /**
@@ -298,6 +340,9 @@ async function boot(): Promise<void> {
     // nó: thiếu dòng này thì kéo thanh SFX trên canvas xong, ô nhập DOM vẫn ghi
     // giá trị cũ, và hai bản lệch nhau.
     bridge.syncControls(state.settings)
+    // Và chiều ngược lại: ô nhập DOM nằm ngay trên slider / toggle / nút theme
+    // của canvas, nên đổi bằng bàn phím thì hình vẽ bên dưới phải đổi theo.
+    settings?.sync(state.settings)
     // Đường LIÊN TỤC duy nhất: `bridge.ts` phát một sự kiện `input` cho MỖI bước
     // kéo thanh trượt SFX. Ghi thẳng ở đây là mỗi bước một lời gọi SDK, mà SDK bị
     // rate-limit — nên đi qua cửa sổ ≥ 1 s của `saveGate`.
@@ -400,6 +445,8 @@ async function boot(): Promise<void> {
   function handleEscape(): void {
     if (settings?.isOpen === true) {
       settings.close()
+      // `settings.close()` không gọi `onClose` (chỉ nút Close của canvas gọi).
+      closeSettings()
       return
     }
     // `Esc` đóng overlay qua ĐÚNG action của nút X, nên hai tầng đóng cùng nhau
@@ -415,6 +462,8 @@ async function boot(): Promise<void> {
     dialogs?.relayout(next)
     dpad?.relayout(next)
     settings?.relayout(next)
+    // SAU khi mọi view đã xếp lại: hộp đọc từ chính các hình vừa dời.
+    placeControls()
   }
 
   /**
@@ -490,6 +539,8 @@ async function boot(): Promise<void> {
     const initial = overlayForStatus(state.status)
     if (initial === 'over') gameOvers += 1
     if (initial !== null) showOverlay(initial)
+    // Lần đặt đầu tiên: trước đó canvas chưa vẽ nút nào để nút DOM đứng lên.
+    placeControls()
 
     hideLoadingScreen()
     platform.notifyGameReady()

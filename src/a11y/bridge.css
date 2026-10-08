@@ -4,17 +4,14 @@
 
    `.a11y-root` (gốc chung) CỐ Ý không có rule nào. Nếu nó cắt — `clip-path`,
    `overflow: hidden` — thì mọi descendant bị cắt theo, kể cả focus ring của nút
-   thật: người dùng bàn phím mở overlay xong sẽ tab vào một vùng 1 px vô hình và
-   không còn dấu hiệu focus nào trên màn hình (WCAG 2.4.7). Việc ẩn nằm ở TỪNG
-   gốc con, không nằm ở gốc chung. */
+   thật (WCAG 2.4.7). Việc ẩn nằm ở TỪNG gốc con, không nằm ở gốc chung. */
 
 /* Gốc A — bàn cờ và hai vùng live. Không phần tử nào bên trong nhận focus nên
    không bao giờ cần lộ: ẩn vĩnh viễn. */
 .a11y-root-board,
-/* Gốc B — điều khiển thật: D-pad, Settings, ô nhập, và dialog. Ẩn MẶC ĐỊNH, lộ
-   ra khi có focus bên trong (mẫu skip-link). Người dùng chuột không thấy, người
-   dùng bàn phím tab vào là thấy. */
-.a11y-root-controls {
+/* Chữ chỉ dành cho screen reader bên trong gốc B: tiêu đề dialog và chữ của
+   nhãn ô nhập. Canvas đã vẽ đúng những chữ đó rồi. */
+.a11y-root-controls .a11y-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -26,46 +23,87 @@
   border: 0;
 }
 
-/* Có focus bên trong thì thoát hẳn khỏi kiểu ẩn: về lại dòng chảy bình thường,
-   bỏ clip, bỏ overflow. Thiếu `clip-path: none` thì vẫn vô hình dù đã `static`. */
-.a11y-root-controls:focus-within {
-  position: static;
-  width: auto;
-  height: auto;
+/* Gốc B — điều khiển thật: D-pad, Settings, ô nhập, và dialog.
+
+   Spec §12, Amend 2026-10-08 (4). Bản trước ẩn cả gốc này rồi cho nó "lộ ra khi
+   có focus" (`position: static`) thành một dải dưới game. Dải đó rơi vào dòng
+   chảy bên dưới `#app` cao 100 % nên trang tràn và mọc thanh cuộn mỗi lần dialog
+   mở — mà dải lại nằm dưới mép màn hình, nên focus ring cũng chẳng ai thấy.
+
+   Nay gốc này KHÔNG chiếm chỗ (0×0, `fixed`) và KHÔNG cắt: từng điều khiển tự
+   `fixed` vào đúng hộp của nút canvas tương ứng (`placeControls`). `fixed` không
+   góp vào vùng cuộn của trang, nên không có đường nào để tràn. */
+.a11y-root-controls {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Một điều khiển thật, TRONG SUỐT, nằm trên nút canvas.
+
+   `pointer-events: none` là quyết định, không phải tiện tay: chuột và cảm ứng đi
+   XUYÊN xuống canvas, nên một cú bấm chỉ có MỘT nơi nhận — ô bấm của canvas. Để
+   nút DOM cũng nhận thì cùng một cú bấm sinh `click` ở DOM lẫn `pointerup` ở
+   canvas, tức hai action cho một lần bấm (đúng lớp lỗi "hai quảng cáo cho một
+   lần thua"). Bàn phím (Enter/Space) và `element.click()` của screen reader
+   không qua hit-test nên vẫn tới được nút DOM — và chỉ tới nút DOM.
+
+   Trong suốt bằng cách bỏ từng lớp vẽ, KHÔNG bằng `opacity: 0`: opacity kéo
+   luôn `outline` về 0 và focus ring biến mất theo. `forced-color-adjust: none`
+   để chế độ màu cưỡng bức của hệ điều hành không tô lại nền/chữ lên trên canvas.
+
+   Chưa có hộp (`data-placed`) thì cắt còn 1 px: khoảng giữa boot và lúc scene
+   dựng xong, canvas chưa vẽ nút nào để ring ôm lấy. */
+.a11y-root-controls .a11y-ctl {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  box-sizing: border-box;
   margin: 0;
-  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  appearance: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+  pointer-events: none;
+  user-select: none;
+  forced-color-adjust: none;
+}
+.a11y-root-controls .a11y-ctl[data-placed] {
   clip-path: none;
 }
 
-/* §12.3 / §B8: focus ring 3 px. Rule này chỉ có nghĩa NHỜ rule ngay trên — không
-   có nó thì outline bị cha cắt và đây là code chết. */
-.a11y-root-controls :focus-visible {
-  outline: 3px solid var(--focus, #1B6EF3);
-  outline-offset: 2px;
+/* `appearance: none` trên `input[type=range]` vẫn để lại con trượt gốc ở
+   Chromium/WebKit và rãnh ở Firefox — phải bỏ riêng từng cái. */
+.a11y-root-controls .a11y-ctl::-webkit-slider-thumb {
+  appearance: none;
+  background: transparent;
+  border: 0;
+}
+.a11y-root-controls .a11y-ctl::-moz-range-thumb,
+.a11y-root-controls .a11y-ctl::-moz-range-track {
+  background: transparent;
+  border: 0;
 }
 
-/* A11Y-07: target ≥ 44×44 px, D-pad ≥ 48 px. Ô nhập gốc nhỏ hơn nhiều
-   (`checkbox` mặc định ~13 px) nên phải tự nâng: nhãn bọc quanh ô nhập giữ
-   chiều cao 44 px, và cả nhãn là vùng bấm. */
-.a11y-root-controls button {
-  min-width: 44px;
-  min-height: 44px;
+/* Danh sách xổ xuống của `<select>` là giao diện gốc của hệ điều hành và phải
+   ĐỌC được khi mở: chữ trong suốt chỉ dành cho ô đang đóng nằm trên canvas. */
+.a11y-root-controls .a11y-ctl option {
+  background: var(--page);
+  color: var(--text);
 }
-.a11y-root-controls .a11y-dpad__btn {
-  min-width: 48px;
-  min-height: 48px;
-}
-.a11y-root-controls .a11y-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-}
-.a11y-root-controls input[type="checkbox"] {
-  width: 24px;
-  height: 24px;
-}
-.a11y-root-controls input[type="range"],
-.a11y-root-controls select {
-  min-height: 44px;
+
+/* §12.3 / §B8: focus ring 3 px, lệch 2 px. Nó ôm nút DOM, mà nút DOM nằm đúng
+   trên nút canvas, nên mắt thấy ring quanh nút đang vẽ. Hai con số này cộng lại
+   là `RING_REACH` của `app/placement.ts` — đổi một bên phải đổi bên kia. */
+.a11y-root-controls .a11y-ctl:focus-visible {
+  outline: 3px solid var(--focus, #1B6EF3);
+  outline-offset: 2px;
 }

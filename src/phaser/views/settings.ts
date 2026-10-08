@@ -4,7 +4,9 @@ import type { Strings } from '../../i18n'
 import { DARK_HEX, hexToInt } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-import { CARD_RADIUS, crisp, drawFloatShadow, FONT_STACK, hexFromInt } from './canvas'
+import {
+  CARD_RADIUS, centredBox, crisp, drawFloatShadow, FONT_STACK, hexFromInt, type Box,
+} from './canvas'
 import { dialogCardWidth, OVERLAY_MS, OVERLAY_REDUCED_MS, type DialogPhase } from './dialogs'
 import { hudLabelSize } from './hud'
 
@@ -79,8 +81,25 @@ const ROW_COUNT = 4
 /** §B8: scrim `rgba(23,22,26,.6)`. */
 const SCRIM_ALPHA = 0.6
 
+/**
+ * Hộp bao bốn điều khiển của bảng, toạ độ game — mỗi khoá ứng với một ô nhập DOM
+ * của `a11y/bridge.ts`.
+ */
+export type SettingsRects = { sfx: Box; haptics: Box; reducedMotion: Box; theme: Box }
+
 export type Settings = {
   open(current: SaveSettings, onClose: () => void): void
+  /**
+   * Chiếu lại cài đặt lên bảng ĐANG MỞ khi thay đổi đến từ ngoài canvas — tức
+   * từ ô nhập DOM của `a11y/bridge.ts`, nay nằm ngay trên các điều khiển này.
+   *
+   * Thiếu đường này thì người dùng bàn phím bấm Space lên toggle mà dấu tick
+   * không đổi, và bản sao `state` ở đây cũ đi: cú bấm chuột kế tiếp lật từ giá
+   * trị CŨ nên phát lại đúng giá trị đang có — một cú bấm không có tác dụng.
+   * Idempotent với thay đổi do chính bảng phát ra. Bảng chưa mở lần nào thì
+   * no-op: `open()` đọc state mới nhất.
+   */
+  sync(current: SaveSettings): void
   close(): void
   readonly isOpen: boolean
   /**
@@ -97,6 +116,8 @@ export type Settings = {
    * qua đây; tầng ghép nối gọi khi state đổi.
    */
   setReducedMotion(on: boolean): void
+  /** Chỗ đặt bốn ô nhập DOM. Hình học của lần xếp layout gần nhất. */
+  controlRects(): SettingsRects
   destroy(): void
 }
 
@@ -537,6 +558,14 @@ export function createSettings(
         ease: 'Sine.easeOut',
       })
     },
+    sync(current) {
+      if (state === null) return
+      state = { ...current }
+      themeIndex = Math.max(0, THEMES.indexOf(current.theme))
+      paintText()
+      knob.setPosition(trackLeft + state.sfxVolume * trackWidth, knob.y)
+      drawToggles()
+    },
     close,
     get isOpen() {
       return phase === 'open'
@@ -562,6 +591,16 @@ export function createSettings(
       stopFade()
       if (phase === 'open') for (const o of fadeTargets()) o.setAlpha(1)
       else finishClose()
+    },
+    controlRects() {
+      return {
+        // Rãnh ĐANG VẼ chứ không phải ô kéo: ô kéo rộng cố định 200 px, còn rãnh
+        // hẹp lại ở viewport hẹp — focus ring phải ôm thứ mắt nhìn thấy.
+        sfx: { x: trackLeft, y: sliderHit.y - TAP_H / 2, w: trackWidth, h: TAP_H },
+        haptics: centredBox(hapticsHit),
+        reducedMotion: centredBox(motionHit),
+        theme: centredBox(themeBtn),
+      }
     },
     destroy() {
       stopFade()

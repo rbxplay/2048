@@ -12,6 +12,8 @@ import {
   createA11yBridge,
   gridLabels,
   type A11yBridge,
+  type A11yPlacement,
+  type A11yRect,
   type A11ySettingsPatch,
   type A11ySettingsState,
 } from './bridge'
@@ -103,32 +105,80 @@ function ruleFor(source: string, selector: string): Rule | null {
 }
 
 describe('CSS của tầng a11y', () => {
-  it('gốc điều khiển THOÁT clip khi có focus bên trong (mẫu skip-link)', () => {
-    const rule = ruleFor(css(), '.a11y-root-controls:focus-within')
-    expect(rule, 'bridge.css phải có rule .a11y-root-controls:focus-within').not.toBeNull()
-    // Thiếu `clip-path: none` là vẫn vô hình dù đã `position: static`.
+  /**
+   * Spec §12, Amend 2026-10-08 (4). Bản trước cho gốc điều khiển "lộ ra khi có
+   * focus" bằng `position: static`: nó rơi vào dòng chảy dưới game cao 100 % và
+   * trang mọc thanh cuộn mỗi lần dialog mở. jsdom không dàn trang nên không đo
+   * được thanh cuộn ở đây — các test này khoá CƠ CHẾ: không còn đường nào đưa
+   * tầng a11y vào dòng chảy.
+   */
+  it('KHÔNG còn rule lộ-ra-khi-focus nào — đó là thứ đẩy trang tràn', () => {
+    for (const rule of rules(css())) {
+      const where = rule.selectors.join(', ')
+      expect(where).not.toContain(':focus-within')
+      expect(rule.body, where).not.toContain('position: static')
+      expect(rule.body, where).not.toContain('position: relative')
+    }
+  })
+
+  it('gốc điều khiển không chiếm chỗ (fixed, 0×0) và không nhận pointer event', () => {
+    const rule = ruleFor(css(), '.a11y-root-controls')
+    expect(rule).not.toBeNull()
+    for (const decl of ['position: fixed', 'width: 0', 'height: 0', 'pointer-events: none']) {
+      expect(rule!.body, decl).toContain(decl)
+    }
+  })
+
+  it('gốc điều khiển và gốc chung KHÔNG cắt — cắt ở đó là focus ring chết', () => {
+    for (const selector of ['.a11y-root', '.a11y-root-controls']) {
+      const rule = ruleFor(css(), selector)
+      expect(rule?.body ?? '', selector).not.toContain('clip-path')
+      expect(rule?.body ?? '', selector).not.toContain('overflow: hidden')
+    }
+  })
+
+  it('gốc bàn cờ và chữ chỉ-cho-screen-reader vẫn bị cắt còn 1 px', () => {
+    for (const selector of ['.a11y-root-board', '.a11y-root-controls .a11y-sr']) {
+      const rule = ruleFor(css(), selector)
+      expect(rule, selector).not.toBeNull()
+      expect(rule!.body, selector).toContain('clip-path: inset(50%)')
+      expect(rule!.body, selector).toContain('position: absolute')
+    }
+  })
+
+  it('điều khiển là fixed, trong suốt, và để pointer event đi xuyên xuống canvas', () => {
+    const rule = ruleFor(css(), '.a11y-root-controls .a11y-ctl')
+    expect(rule).not.toBeNull()
     for (const decl of [
-      'position: static',
-      'width: auto',
-      'height: auto',
-      'overflow: visible',
-      'clip-path: none',
+      'position: fixed',
+      'background: transparent',
+      'color: transparent',
+      'appearance: none',
+      // Một cú bấm chỉ có MỘT nơi nhận: ô bấm của canvas.
+      'pointer-events: none',
     ]) {
       expect(rule!.body, decl).toContain(decl)
     }
   })
 
-  it('gốc điều khiển bị ẩn MẶC ĐỊNH — chưa có focus thì không lộ ra', () => {
-    const rule = ruleFor(css(), '.a11y-root-controls')
-    expect(rule).not.toBeNull()
-    expect(rule!.body).toContain('clip-path')
-    expect(rule!.body).toContain('overflow: hidden')
+  it('trong suốt KHÔNG bằng opacity — opacity 0 kéo luôn focus ring về 0', () => {
+    for (const rule of rules(css())) {
+      expect(rule.body, rule.selectors.join(', ')).not.toContain('opacity')
+    }
   })
 
-  it('gốc chung .a11y-root KHÔNG cắt — cắt ở đó là focus ring chết trở lại', () => {
-    const rule = ruleFor(css(), '.a11y-root')
-    expect(rule?.body ?? '').not.toContain('clip-path')
-    expect(rule?.body ?? '').not.toContain('overflow: hidden')
+  it('điều khiển đã có chỗ thì bỏ cắt, để ring vẽ ra được', () => {
+    expect(ruleFor(css(), '.a11y-root-controls .a11y-ctl')!.body).toContain('clip-path: inset(50%)')
+    expect(ruleFor(css(), '.a11y-root-controls .a11y-ctl[data-placed]')!.body).toContain(
+      'clip-path: none',
+    )
+  })
+
+  it('focus ring 3 px lệch 2 px bằng token --focus (DesignSystem §B8)', () => {
+    const rule = ruleFor(css(), '.a11y-root-controls .a11y-ctl:focus-visible')
+    expect(rule).not.toBeNull()
+    expect(rule!.body).toMatch(/outline: 3px solid var\(--focus\b/)
+    expect(rule!.body).toContain('outline-offset: 2px')
   })
 
   it('không rule nào dùng display:none hay visibility:hidden (gỡ khỏi cây a11y)', () => {
@@ -138,17 +188,13 @@ describe('CSS của tầng a11y', () => {
     }
   })
 
-  it('target ≥ 44 px, D-pad ≥ 48 px (§12.3 / A11Y-07)', () => {
-    const button = ruleFor(css(), '.a11y-root-controls button')
-    expect(button!.body).toContain('min-width: 44px')
-    expect(button!.body).toContain('min-height: 44px')
-    const dpad = ruleFor(css(), '.a11y-root-controls .a11y-dpad__btn')
-    expect(dpad!.body).toContain('min-width: 48px')
-    expect(dpad!.body).toContain('min-height: 48px')
-  })
-
-  it('vùng bấm của ô nhập gồm cả nhãn bọc quanh, cũng ≥ 44 px', () => {
-    expect(ruleFor(css(), '.a11y-root-controls .a11y-field')!.body).toContain('min-height: 44px')
+  it('CSS không ép cỡ tối thiểu — cỡ đến từ nút canvas, một nguồn duy nhất', () => {
+    // Cỡ ≥ 44 / ≥ 48 px (A11Y-07) nay do hộp của canvas quyết định và được kiểm
+    // ở `app/placement.test.ts`. Một `min-height` ở đây sẽ thắng `height` của
+    // `placeControls` và đẩy focus ring ra ngoài viewport ở nút sát mép.
+    for (const rule of rules(css())) {
+      expect(rule.body, rule.selectors.join(', ')).not.toMatch(/min-(width|height)/)
+    }
   })
 })
 
@@ -739,7 +785,7 @@ describe('mountControls — §12.1: nút và ô nhập DOM thật', () => {
     expect(calls.patches).toEqual([{ theme: 'dark' }])
   })
 
-  it('mỗi ô nhập nằm trong một <label> bọc quanh — cả hàng là vùng bấm', () => {
+  it('mỗi ô nhập nằm trong một <label> bọc quanh — tên đọc lên lấy từ nhãn', () => {
     mount()
     const labels = Array.from(controlsRoot().querySelectorAll('label.a11y-field'))
     expect(labels).toHaveLength(4)
@@ -796,6 +842,146 @@ describe('mountControls — §12.1: nút và ô nhập DOM thật', () => {
     mount()
     expect(boardRoot().querySelectorAll('button, input, select')).toHaveLength(0)
     expect(controlsRoot().querySelectorAll('button, input, select').length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * Spec §12, Amend 2026-10-08 (4): mỗi điều khiển DOM nằm đúng trên nút canvas của
+ * nó. Tầng này không tính hình học — nó đặt phần tử vào hộp được đưa cho.
+ */
+describe('placeControls — nút DOM nằm trên nút canvas', () => {
+  const rect = (x: number, y: number, w = 48, h = 48): A11yRect => ({ x, y, w, h })
+  const placement = (over: Partial<A11yPlacement> = {}): A11yPlacement => ({
+    dpad: { up: rect(136, 400), left: rect(80, 456), right: rect(192, 456), down: rect(136, 512) },
+    settingsButton: rect(256, 20, 44, 44),
+    sfx: rect(40, 150, 200, 44),
+    haptics: rect(250, 200, 44, 44),
+    reducedMotion: rect(250, 256, 44, 44),
+    theme: rect(180, 310, 120, 48),
+    dialogButtons: [],
+    ...over,
+  })
+  const box = (el: HTMLElement) => ({
+    left: el.style.left,
+    top: el.style.top,
+    width: el.style.width,
+    height: el.style.height,
+  })
+  const px = (r: A11yRect) => ({
+    left: `${r.x}px`,
+    top: `${r.y}px`,
+    width: `${r.w}px`,
+    height: `${r.h}px`,
+  })
+
+  it('mọi điều khiển mang class a11y-ctl; chữ của nhãn và tiêu đề mang a11y-sr', () => {
+    mount()
+    open([en.keepPlaying, en.newGame])
+    const ctl = Array.from(controlsRoot().querySelectorAll('button, input, select'))
+    expect(ctl).toHaveLength(4 + 1 + 4 + 2)
+    for (const el of ctl) expect(el.classList.contains('a11y-ctl'), el.outerHTML).toBe(true)
+    for (const el of controlsRoot().querySelectorAll('h2, .a11y-field__text')) {
+      expect(el.classList.contains('a11y-sr'), el.outerHTML).toBe(true)
+    }
+  })
+
+  it('chưa đặt thì chưa điều khiển nào có chỗ', () => {
+    mount()
+    for (const el of controlsRoot().querySelectorAll('.a11y-ctl')) {
+      expect(el.hasAttribute('data-placed')).toBe(false)
+    }
+  })
+
+  it('bốn nút D-pad vào đúng hộp của HƯỚNG mình, không theo thứ tự mảng', () => {
+    mount()
+    const p = placement()
+    bridge.placeControls(p)
+    // Thứ tự DOM là lên · trái · phải · xuống (§B8).
+    const [up, left, right, down] = dpadButtons()
+    expect(box(up!)).toEqual(px(p.dpad.up))
+    expect(box(left!)).toEqual(px(p.dpad.left))
+    expect(box(right!)).toEqual(px(p.dpad.right))
+    expect(box(down!)).toEqual(px(p.dpad.down))
+  })
+
+  it('nút Settings và bốn ô nhập vào đúng hộp của mình', () => {
+    mount()
+    const p = placement()
+    bridge.placeControls(p)
+    expect(box(settingsButton())).toEqual(px(p.settingsButton))
+    expect(box(sfx())).toEqual(px(p.sfx))
+    expect(box(checkboxes()[0]!)).toEqual(px(p.haptics))
+    expect(box(checkboxes()[1]!)).toEqual(px(p.reducedMotion))
+    expect(box(themeSelect())).toEqual(px(p.theme))
+    for (const el of [settingsButton(), sfx(), ...checkboxes(), themeSelect()]) {
+      expect(el.hasAttribute('data-placed')).toBe(true)
+    }
+  })
+
+  it('nút dialog thứ i vào hộp thứ i', () => {
+    open([en.keepPlaying, en.newGame])
+    const rects = [rect(40, 300, 240, 48), rect(40, 240, 240, 48)]
+    bridge.placeControls(placement({ dialogButtons: rects }))
+    expect(dialogButtons().map(box)).toEqual(rects.map(px))
+  })
+
+  it('đặt lại với hộp mới thì nút đi theo (resize)', () => {
+    mount()
+    bridge.placeControls(placement())
+    const moved = placement({ settingsButton: rect(596, 8, 44, 44) })
+    bridge.placeControls(moved)
+    expect(box(settingsButton())).toEqual(px(moved.settingsButton))
+  })
+
+  it('dialog mở lại với nút khác: nút mới chưa có chỗ cho tới lần đặt kế', () => {
+    open([en.keepPlaying, en.newGame])
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 300), rect(40, 240)] }))
+    open([en.retry])
+    const [retry] = dialogButtons()
+    expect(dialogButtons()).toHaveLength(1)
+    expect(retry!.hasAttribute('data-placed')).toBe(false)
+    const again = placement({ dialogButtons: [rect(40, 320, 240, 48)] })
+    bridge.placeControls(again)
+    expect(box(retry!)).toEqual(px(again.dialogButtons[0]!))
+  })
+
+  it('thiếu hộp cho một nút dialog thì GỠ chỗ nút đó, không giữ hộp cũ', () => {
+    open([en.keepPlaying, en.newGame])
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 300), rect(40, 240)] }))
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 300)] }))
+    const [first, second] = dialogButtons()
+    expect(first!.hasAttribute('data-placed')).toBe(true)
+    expect(second!.hasAttribute('data-placed')).toBe(false)
+    expect(box(second!)).toEqual({ left: '', top: '', width: '', height: '' })
+  })
+
+  it('đặt chỗ KHÔNG đổi focus, tên, hay trạng thái inert/hidden', () => {
+    mount()
+    open([en.retry])
+    const focused = document.activeElement
+    bridge.setDpadVisible(false)
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 320, 240, 48)] }))
+    expect(document.activeElement).toBe(focused)
+    expect(dialogButtons()[0]!.textContent).toBe(en.retry)
+    expect(controlsRoot().querySelector<HTMLElement>('.a11y-dpad')!.hidden).toBe(true)
+    expect(settingsButton().hasAttribute('inert')).toBe(true)
+    expect(settingsButton().textContent).toBe(en.settings)
+  })
+
+  it('không điều khiển nào bị aria-hidden hay hidden vì được đặt chỗ', () => {
+    mount()
+    bridge.placeControls(placement())
+    for (const el of controlsRoot().querySelectorAll<HTMLElement>('.a11y-ctl')) {
+      expect(el.getAttribute('aria-hidden')).toBeNull()
+      expect(el.hidden).toBe(false)
+    }
+  })
+
+  it('chưa mountControls hoặc đã destroy thì là no-op, không ném', () => {
+    expect(() => bridge.placeControls(placement())).not.toThrow()
+    mount()
+    bridge.destroy()
+    expect(() => bridge.placeControls(placement({ dialogButtons: [rect(0, 0)] }))).not.toThrow()
   })
 })
 

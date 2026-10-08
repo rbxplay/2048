@@ -3,7 +3,7 @@ import { formatNumber, type Locale, type Strings } from '../../i18n'
 import { DARK_HEX, hexToInt, SHADOW_BASE_HEX } from '../../theme/palette'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-import { CARD_RADIUS, FONT_STACK, SHADOW_DY } from './canvas'
+import { CARD_RADIUS, centredBox, FONT_STACK, SHADOW_DY, type Box } from './canvas'
 
 export type DialogKind = 'win' | 'gameover'
 /**
@@ -35,6 +35,11 @@ export type Dialogs = {
    * không thì `--dur-overlay` chỉ có một nửa.
    */
   setReducedMotion(on: boolean): void
+  /**
+   * Hộp bao các nút hành động ĐANG có, toạ độ game, CÙNG thứ tự với
+   * `buttonLabels` — tầng a11y đặt nút DOM thứ `i` lên hộp thứ `i`.
+   */
+  buttonRects(): Box[]
   destroy(): void
 }
 
@@ -479,6 +484,9 @@ export function createDialogs(
       } else {
         finishClose()
       }
+    },
+    buttonRects() {
+      return buttons.map((b) => centredBox(b.bg))
     },
     destroy() {
       // Gỡ tween trước khi huỷ hình.

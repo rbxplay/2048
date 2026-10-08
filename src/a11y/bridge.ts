@@ -56,6 +56,26 @@ export type A11ySettingsPatch = {
   theme?: ThemeName
 }
 
+/** Hộp bao trên TRANG, CSS px, gốc ở góc trên-trái viewport. */
+export type A11yRect = { x: number; y: number; w: number; h: number }
+
+/**
+ * Chỗ đặt từng điều khiển DOM — đúng trên nút canvas tương ứng.
+ *
+ * Tầng này KHÔNG tự tính hình học và không biết canvas nằm ở đâu: nó chỉ đặt
+ * phần tử vào hộp được đưa cho. Ai tính hộp thì xem `app/placement.ts`.
+ */
+export type A11yPlacement = {
+  dpad: Record<Dir, A11yRect>
+  settingsButton: A11yRect
+  sfx: A11yRect
+  haptics: A11yRect
+  reducedMotion: A11yRect
+  theme: A11yRect
+  /** Theo thứ tự nút của dialog đang mở; rỗng khi không có dialog. */
+  dialogButtons: readonly A11yRect[]
+}
+
 export type MountControlsOptions = {
   onDir: (dir: Dir) => void
   onSettings: () => void
@@ -73,6 +93,11 @@ export type A11yBridge = {
   closeDialog(): void
   mountControls(opts: MountControlsOptions): void
   syncControls(state: A11ySettingsState): void
+  /**
+   * Đặt mọi điều khiển lên nút canvas của nó. Gọi lại mỗi khi hình học hoặc
+   * trạng thái đổi (resize, mở/đóng dialog, mở/đóng Settings).
+   */
+  placeControls(placement: A11yPlacement): void
   /**
    * §9.5 + PRD:452 — khi nền tảng pause, D-pad biến mất. Bản DOM phải đi cùng
    * bản canvas, nếu không thì hai tầng nói hai chuyện khác nhau.
@@ -125,6 +150,31 @@ function readTheme(value: string): ThemeName {
   return value === 'dark' || value === 'contrast' ? value : 'light'
 }
 
+/** Class của mọi điều khiển được đặt lên canvas — khớp `bridge.css`. */
+const CTL_CLASS = 'a11y-ctl'
+/** Class của chữ chỉ dành cho screen reader (tiêu đề dialog, chữ của nhãn). */
+const SR_CLASS = 'a11y-sr'
+
+/**
+ * Đặt một điều khiển vào hộp của nó, hoặc gỡ chỗ (`null`).
+ *
+ * `data-placed` là thứ CSS dựa vào: điều khiển chưa có chỗ thì bị cắt còn 1 px
+ * (khoảng giữa boot và lúc scene dựng xong), có chỗ rồi mới bỏ cắt để focus
+ * ring vẽ ra được.
+ */
+function place(el: HTMLElement, rect: A11yRect | null): void {
+  if (rect === null) {
+    el.removeAttribute('data-placed')
+    for (const prop of ['left', 'top', 'width', 'height']) el.style.removeProperty(prop)
+    return
+  }
+  el.setAttribute('data-placed', '')
+  el.style.left = `${rect.x}px`
+  el.style.top = `${rect.y}px`
+  el.style.width = `${rect.w}px`
+  el.style.height = `${rect.h}px`
+}
+
 type Controls = {
   buttons: HTMLButtonElement[]
   /** Vỏ bọc bốn nút mũi tên — cần giữ để ẩn/hiện cả cụm (§9.5). */
@@ -142,9 +192,9 @@ export function createA11yBridge(): A11yBridge {
   const root = document.createElement('div')
   root.className = 'a11y-root'
 
-  // Hai gốc con, KHÔNG phải một. Lý do ở `bridge.css`: gốc chung không được cắt,
-  // nếu không thì gốc điều khiển không bao giờ lộ ra được và focus ring thành
-  // code chết.
+  // Hai gốc con, KHÔNG phải một. Lý do ở `bridge.css`: gốc bàn cờ bị cắt vĩnh
+  // viễn, còn gốc điều khiển thì KHÔNG được cắt — điều khiển của nó nằm trong
+  // suốt trên nút canvas, và cha mà cắt là focus ring mất theo.
   const boardRoot = document.createElement('div')
   boardRoot.className = 'a11y-root-board'
   const controlsRoot = document.createElement('div')
@@ -181,8 +231,9 @@ export function createA11yBridge(): A11yBridge {
   outcomeLive.setAttribute('aria-live', 'assertive')
   outcomeLive.setAttribute('aria-atomic', 'true')
 
-  // Dialog nằm trong gốc ĐIỀU KHIỂN: nút trong dialog là nút thật và phải thấy
-  // được. Đặt nó vào gốc bàn cờ (bị cắt vĩnh viễn) là lặp lại đúng lỗi cũ.
+  // Dialog nằm trong gốc ĐIỀU KHIỂN: nút trong dialog là nút thật và focus ring
+  // của nó phải thấy được. Đặt nó vào gốc bàn cờ (bị cắt vĩnh viễn) là lặp lại
+  // đúng lỗi cũ.
   const dialogHost = document.createElement('div')
   dialogHost.className = 'a11y-dialog-host'
 
@@ -197,6 +248,8 @@ export function createA11yBridge(): A11yBridge {
   let pending: string | null = null
   let controls: Controls | null = null
   let dialogEl: HTMLElement | null = null
+  /** Nút của dialog đang mở, theo thứ tự hiện ra — đích của `placeControls`. */
+  let dialogButtons: HTMLButtonElement[] = []
   let restoreFocusTo: HTMLElement | null = null
 
   function syncBoard(board: Board): void {
@@ -315,16 +368,19 @@ export function createA11yBridge(): A11yBridge {
     dialog.setAttribute('aria-labelledby', headingId)
 
     const heading = document.createElement('h2')
+    heading.className = SR_CLASS
     heading.id = headingId
     heading.textContent = opts.heading
     dialog.appendChild(heading)
 
-    opts.labels.forEach((label, index) => {
+    dialogButtons = opts.labels.map((label, index) => {
       const button = document.createElement('button')
       button.type = 'button'
+      button.className = CTL_CLASS
       button.textContent = label
       button.addEventListener('click', () => opts.onActivate(index))
       dialog.appendChild(button)
+      return button
     })
 
     dialog.addEventListener('keydown', onDialogKeydown)
@@ -346,6 +402,7 @@ export function createA11yBridge(): A11yBridge {
     const dialog = dialogEl
     if (dialog === null) return
     dialogEl = null
+    dialogButtons = []
     const back = restoreFocusTo
     restoreFocusTo = null
 
@@ -388,7 +445,7 @@ export function createA11yBridge(): A11yBridge {
     c.theme.setAttribute('aria-label', s.theme)
   }
 
-  /** Nhãn bọc quanh ô nhập: cả nhãn là vùng bấm, và tên đọc lên lấy từ đây. */
+  /** Nhãn bọc quanh ô nhập: tên đọc lên của ô nhập lấy từ đây. */
   function field(
     text: HTMLSpanElement,
     control: HTMLElement,
@@ -408,7 +465,7 @@ export function createA11yBridge(): A11yBridge {
 
   function textSpan(): HTMLSpanElement {
     const span = document.createElement('span')
-    span.className = 'a11y-field__text'
+    span.className = `a11y-field__text ${SR_CLASS}`
     return span
   }
 
@@ -422,7 +479,7 @@ export function createA11yBridge(): A11yBridge {
     for (const dir of DIRS) {
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = 'a11y-dpad__btn'
+      button.className = `a11y-dpad__btn ${CTL_CLASS}`
       button.addEventListener('click', () => opts.onDir(dir))
       buttons.push(button)
       dpad.appendChild(button)
@@ -430,7 +487,7 @@ export function createA11yBridge(): A11yBridge {
 
     const settingsButton = document.createElement('button')
     settingsButton.type = 'button'
-    settingsButton.className = 'a11y-settings'
+    settingsButton.className = `a11y-settings ${CTL_CLASS}`
     settingsButton.addEventListener('click', () => opts.onSettings())
 
     const sfx = document.createElement('input')
@@ -464,6 +521,8 @@ export function createA11yBridge(): A11yBridge {
     theme.addEventListener('change', () => {
       opts.onSettingsChange({ theme: readTheme(theme.value) })
     })
+
+    for (const input of [sfx, haptics, reducedMotion, theme]) input.className = CTL_CLASS
 
     const texts = {
       sfx: textSpan(),
@@ -513,6 +572,25 @@ export function createA11yBridge(): A11yBridge {
     c.theme.value = state.theme
   }
 
+  function placeControls(placement: A11yPlacement): void {
+    const c = controls
+    if (c !== null) {
+      DIRS.forEach((dir, i) => {
+        const button = c.buttons[i]
+        if (button !== undefined) place(button, placement.dpad[dir])
+      })
+      place(c.settingsButton, placement.settingsButton)
+      place(c.sfx, placement.sfx)
+      place(c.haptics, placement.haptics)
+      place(c.reducedMotion, placement.reducedMotion)
+      place(c.theme, placement.theme)
+    }
+    // Thiếu hộp cho một nút (canvas đang có ít nút hơn DOM) thì gỡ chỗ nút đó,
+    // KHÔNG để nó nằm lại ở hộp của lần đặt trước — ring vẽ sai chỗ còn tệ hơn
+    // là không có chỗ.
+    dialogButtons.forEach((button, i) => place(button, placement.dialogButtons[i] ?? null))
+  }
+
   /**
    * Ẩn/hiện cụm D-pad của tầng DOM.
    *
@@ -547,6 +625,7 @@ export function createA11yBridge(): A11yBridge {
     // chết mà vẫn đọc số.
     pending = null
     dialogEl = null
+    dialogButtons = []
     restoreFocusTo = null
     controls = null
     cells.length = 0
@@ -562,6 +641,7 @@ export function createA11yBridge(): A11yBridge {
     closeDialog,
     mountControls,
     syncControls,
+    placeControls,
     setDpadVisible,
     setStrings,
     destroy,

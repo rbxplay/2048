@@ -2,6 +2,7 @@ import type Phaser from 'phaser'
 import type { Dir } from '../../game/rules'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
+import { centredBox, type Box } from './canvas'
 
 /**
  * D-pad vẽ trong canvas — 4 nút cảm ứng ở đáy màn hình.
@@ -42,6 +43,11 @@ export type Dpad = {
   noteDragUsed(): void
   relayout(layout: Layout): void
   setTheme(theme: PhaserTheme): void
+  /**
+   * Hộp bao từng nút, toạ độ game — để tầng a11y đặt nút DOM lên đúng chỗ. Trả
+   * về cả khi D-pad đang ẩn: hình học không đổi theo việc ẩn/hiện.
+   */
+  buttonRects(): Record<Dir, Box>
   destroy(): void
 }
 
@@ -182,6 +188,11 @@ export function createDpad(
         n.bg.setFillStyle(t.btn)
         drawIcon(n, n.bg.x, n.bg.y)
       }
+    },
+    buttonRects() {
+      const out = {} as Record<Dir, Box>
+      for (const n of nodes) out[n.spec.dir] = centredBox(n.bg)
+      return out
     },
     destroy() {
       clearTimer()

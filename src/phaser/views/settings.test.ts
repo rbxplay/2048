@@ -942,6 +942,114 @@ describe('createSettings — giảm chuyển động ghi đè được qua cả 
 // Bố cục thật
 // ---------------------------------------------------------------------------
 
+describe('createSettings — controlRects: chỗ đặt bốn ô nhập DOM', () => {
+  const boxOf = (o: FakeGO) => ({ x: o.x - o.width / 2, y: o.y - o.height / 2, w: o.width, h: o.height })
+
+  it('toggle và nút theme: hộp của CHÍNH ô chạm đang nhận input', () => {
+    const { s, panel } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    const rects = panel.controlRects()
+    // Rung đứng trên Giảm chuyển động.
+    const [first, second] = toggleHits(s).sort((a, b) => a.y - b.y)
+    expect(rects.haptics).toEqual(boxOf(first!))
+    expect(rects.reducedMotion).toEqual(boxOf(second!))
+    expect(rects.theme).toEqual(boxOf(themeButton(s)!))
+  })
+
+  it('slider: ôm rãnh ĐANG VẼ, cao 44 px — không phải ô kéo rộng cố định 200 px', () => {
+    // 260 px: lòng card 188,8 px nên rãnh hẹp hơn ô kéo.
+    const narrow = computeLayout(260, 400)
+    const { s, panel } = makePanel(narrow)
+    panel.open(baseSave, () => {})
+    const track = s.added.find((o) => o.kind === 'rectangle' && o.height === 6)!
+    const hit = sliderTrack(s)!
+    const rect = panel.controlRects().sfx
+    expect(rect.w).toBe(track.width)
+    expect(rect.w).toBeLessThan(hit.width)
+    expect(rect.x).toBe(track.x)
+    expect(rect.h).toBe(44)
+    expect(rect.y + rect.h / 2).toBe(track.y)
+  })
+
+  it('mọi hộp ≥ 44×44 ở mọi viewport bố cục cam kết (A11Y-07)', () => {
+    for (const [w, h] of [[260, 360], [260, 400], [320, 568], [640, 360], [1280, 720]] as const) {
+      const { panel } = makePanel(computeLayout(w, h))
+      panel.open(baseSave, () => {})
+      for (const [key, r] of Object.entries(panel.controlRects())) {
+        expect(r.w, `${w}×${h} ${key}`).toBeGreaterThanOrEqual(44)
+        expect(r.h, `${w}×${h} ${key}`).toBeGreaterThanOrEqual(44)
+      }
+    }
+  })
+
+  it('đi theo relayout', () => {
+    const { panel } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    const before = panel.controlRects()
+    panel.relayout(layoutDesktop)
+    expect(panel.controlRects().theme).not.toEqual(before.theme)
+    expect(panel.controlRects().sfx.w).toBe(200)
+  })
+})
+
+describe('createSettings — sync: thay đổi từ ô nhập DOM hiện lên canvas', () => {
+  const knob = (s: FakeScene): FakeGO => s.added.find((o) => o.kind === 'circle')!
+
+  it('con trượt, dấu tick và nhãn theme đi theo state mới', () => {
+    const { s, panel } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    const track = s.added.find((o) => o.kind === 'rectangle' && o.height === 6)!
+    // Mở với rung BẬT, giảm chuyển động TẮT: một dấu tick = 2 nét.
+    expect(toggleFace(s)?.countOf('lineBetween')).toBe(2)
+
+    panel.sync({ ...baseSave, sfxVolume: 0.2, haptics: false, reducedMotion: true, theme: 'dark' })
+
+    expect(knob(s).x).toBeCloseTo(track.x + 0.2 * track.width)
+    expect(textNamed(s, i18n.en.themeDark)).toBeDefined()
+    // Vẫn một dấu tick, nhưng nay nằm ở toggle DƯỚI (giảm chuyển động).
+    const face = toggleFace(s)!
+    expect(face.countOf('lineBetween')).toBe(2)
+    const [, lower] = toggleHits(s).sort((a, b) => a.y - b.y)
+    expect(face.argOf('lineBetween', 0)).toBe(lower!.x - 9)
+    expect(face.argOf('lineBetween', 1)).toBe(lower!.y + 1)
+
+    panel.sync({ ...baseSave, haptics: false, reducedMotion: false })
+    expect(toggleFace(s)?.countOf('lineBetween')).toBe(0)
+  })
+
+  it('không phát patch nào — đây là chiều state chảy xuống', () => {
+    const { panel, patches } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    panel.sync({ ...baseSave, haptics: false })
+    expect(patches).toEqual([])
+  })
+
+  it('cú bấm canvas SAU đó lật từ giá trị MỚI, không từ bản sao cũ', () => {
+    const { s, panel, patches } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    // Bàn phím vừa tắt rung qua ô nhập DOM.
+    panel.sync({ ...baseSave, haptics: false })
+    const [hapticsHit] = toggleHits(s).sort((a, b) => a.y - b.y)
+    hapticsHit!.press()
+    // Bản sao cũ (true) sẽ phát `false` — đúng giá trị đang có, tức bấm vô ích.
+    expect(patches).toEqual([{ haptics: true }])
+  })
+
+  it('nút theme canvas xoay tiếp từ theme mà ô nhập DOM vừa chọn', () => {
+    const { s, panel, patches } = makePanel(layoutPhone)
+    panel.open(baseSave, () => {})
+    panel.sync({ ...baseSave, theme: 'contrast' })
+    themeButton(s)!.press()
+    expect(patches).toEqual([{ theme: 'light' }])
+  })
+
+  it('bảng chưa mở lần nào thì no-op, không ném', () => {
+    const { panel, patches } = makePanel(layoutPhone)
+    expect(() => panel.sync({ ...baseSave, haptics: false })).not.toThrow()
+    expect(patches).toEqual([])
+  })
+})
+
 describe('createSettings — relayout theo viewport', () => {
   it('gốc toạ độ khớp cách xếp: nhãn canh mép trái, nút canh tâm', () => {
     const { s, panel } = makePanel(layoutPhone, i18n.en)

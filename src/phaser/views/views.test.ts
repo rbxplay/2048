@@ -472,6 +472,32 @@ describe('createHud — bánh răng Settings (§B8:222)', () => {
   })
 })
 
+describe('createHud — gearRect: chỗ đặt nút Settings của DOM', () => {
+  it('là hộp của CHÍNH ô chạm bánh răng, và đi theo relayout', () => {
+    const s = makeScene()
+    const hud = createHud(s.scene, theme, layout320, {
+      getLocale: () => 'en',
+      getStrings: () => en,
+      onSettings: () => {},
+    })
+    const hit = hitTargets(s)[0]!
+    const expected = () => ({
+      x: hit.x - GEAR_SIZE / 2,
+      y: hit.y - GEAR_SIZE / 2,
+      w: GEAR_SIZE,
+      h: GEAR_SIZE,
+    })
+    expect(hud.gearRect()).toEqual(expected())
+    // Mép phải bánh răng trùng mép phải hàng HUD.
+    expect(hud.gearRect().x + GEAR_SIZE).toBeCloseTo(layout320.hudX + layout320.hudWidth)
+
+    const before = hud.gearRect().x
+    hud.relayout(layoutDesktop)
+    expect(hud.gearRect()).toEqual(expected())
+    expect(hud.gearRect().x).not.toBe(before)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Dialogs
 // ---------------------------------------------------------------------------
@@ -646,6 +672,48 @@ describe('createDialogs — ô bấm nút hành động', () => {
     dialogs(s, layout320, []).open('gameover', { score: 8, best: 8 })
     expect(actionButtons(s)).toHaveLength(1)
     expect(hitTargets(s)).toHaveLength(1)
+  })
+})
+
+describe('createDialogs — buttonRects: chỗ đặt nút DOM của dialog', () => {
+  const boxOf = (b: FakeGO) => ({ x: b.x - b.width / 2, y: b.y - b.height / 2, w: b.width, h: b.height })
+
+  it('chưa mở dialog nào thì chưa có nút nào', () => {
+    const s = makeScene()
+    expect(dialogs(s, layout320, []).buttonRects()).toEqual([])
+  })
+
+  it('cùng thứ tự với buttonLabels: hộp thứ i là nút thứ i đang vẽ', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('win', { score: 8, best: 8 })
+    const btns = actionButtons(s)
+    expect(d.buttonRects()).toEqual(btns.map(boxOf))
+    expect(d.buttonRects()).toHaveLength(2)
+    for (const r of d.buttonRects()) expect(r.h).toBe(48)
+    // Hai nút là hai hộp KHÁC nhau, không chồng lên nhau.
+    const [a, b] = d.buttonRects()
+    expect(Math.abs(a!.y - b!.y)).toBeGreaterThanOrEqual(48)
+  })
+
+  it('mở lại với loại khác thì số hộp theo số nút mới', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('win', { score: 8, best: 8 })
+    d.open('gameover', { score: 8, best: 8 })
+    expect(d.buttonRects()).toHaveLength(1)
+  })
+
+  it('đi theo relayout', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('gameover', { score: 8, best: 8 })
+    const before = d.buttonRects()[0]!
+    d.relayout(layoutDesktop)
+    const after = d.buttonRects()[0]!
+    expect(after.w).toBe(DIALOG_MAX_W - 40)
+    expect(after.x).toBeCloseTo(layoutDesktop.width / 2 - after.w / 2)
+    expect(after).not.toEqual(before)
   })
 })
 

@@ -330,6 +330,36 @@ describe('createDpad — vòng đời', () => {
     expect(top).toBeGreaterThanOrEqual(wide.dpadY)
   })
 
+  it('buttonRects trả hộp của CHÍNH các nút đang vẽ, theo hướng — nguồn cho nút DOM', () => {
+    const s = makeScene()
+    const d = dpad(s)
+    const rects = d.buttonRects()
+    // Thứ tự dựng: lên, trái, phải, xuống.
+    const [up, left, right, down] = s.buttons()
+    for (const [dir, go] of [['up', up], ['left', left], ['right', right], ['down', down]] as const) {
+      expect(rects[dir], dir).toEqual({
+        x: go!.x - DPAD_BUTTON_PX / 2,
+        y: go!.y - DPAD_BUTTON_PX / 2,
+        w: DPAD_BUTTON_PX,
+        h: DPAD_BUTTON_PX,
+      })
+    }
+    // Chữ thập nằm trọn trong khối `dpadX`/`dpadY` của layout.
+    expect(rects.up.y).toBe(layout320.dpadY)
+    expect(rects.left.x).toBe(layout320.dpadX)
+  })
+
+  it('buttonRects đi theo relayout, và không phụ thuộc việc D-pad đang ẩn', () => {
+    const s = makeScene()
+    const d = dpad(s)
+    const wide = computeLayout(640, 360)
+    d.relayout(wide)
+    d.setVisible(false)
+    // 640×360: D-pad sang bên phải board.
+    expect(d.buttonRects().left.x).toBe(wide.dpadX)
+    expect(d.buttonRects().up.y).toBe(wide.dpadY)
+  })
+
   it('destroy gỡ timer và huỷ mọi hình', () => {
     const s = makeScene()
     const d = dpad(s)

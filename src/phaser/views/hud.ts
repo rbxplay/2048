@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 import { formatNumber, type Locale, type Strings } from '../../i18n'
 import type { Layout } from '../layout'
 import type { PhaserTheme } from '../theme'
-import { FONT_STACK } from './canvas'
+import { centredBox, FONT_STACK, type Box } from './canvas'
 
 /** Chiều cao TỐI THIỂU của thẻ điểm; thẻ cao thêm nếu cỡ chữ §B2 đòi. */
 const CARD_H = 40
@@ -114,6 +114,8 @@ export type Hud = {
   relayout(layout: Layout): void
   setTheme(theme: PhaserTheme): void
   setReducedMotion(on: boolean): void
+  /** Hộp bao ô chạm của bánh răng, toạ độ game — chỗ đặt nút Settings của DOM. */
+  gearRect(): Box
   destroy(): void
 }
 
@@ -310,6 +312,9 @@ export function createHud(
       // §B5: giảm chuyển động ⇒ `--dur-badge: 0ms`. Badge chỉ có một dạng là
       // "bay lên rồi mờ đi", nên không bay nữa thì nó vô hình — bỏ luôn.
       if (on) clearBadge()
+    },
+    gearRect() {
+      return centredBox(gearHit)
     },
     destroy() {
       clearBadge()
