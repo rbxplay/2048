@@ -118,6 +118,29 @@ describe('createSession', () => {
     expect(s.status).toBe('over')
   })
 
+  it('resume board hết nước khi CHƯA xử lý overlay WIN ⇒ status won, WIN thắng over', () => {
+    // Ca đồng thời của Review Focus mục 5 đi qua đĩa: nước đi vừa tạo 2048 vừa
+    // lấp ô cuối, save ở milestone 'win' với won:true, keepPlaying:false. Luật
+    // của brief là overlay chỉ được là 'win' — over chỉ lộ ra sau keepPlaying.
+    const s = createSession({
+      ctx: ctx(),
+      resume: {
+        board: [
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+          [2, 4, 2, 4],
+          [4, 2, 4, 2],
+        ],
+        score: 20480,
+        moves: 300,
+        won: true,
+        keepPlaying: false,
+      },
+    })
+    expect(canMove(s.board)).toBe(false)
+    expect(s.status).toBe('won')
+  })
+
   it('sau resume, id trên board vẫn duy nhất qua các nước đi tiếp', () => {
     // Board khôi phục và tile sinh ra sau đó phải dùng CHUNG một bộ đếm id,
     // nếu không id trùng và Board.ts#acquire trả nhầm node cho hai tile khác nhau.

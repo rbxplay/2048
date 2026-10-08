@@ -79,6 +79,9 @@ export function createSession(opts: {
         // Trạng thái chết phải suy lại từ board: `resume` không mang `status`,
         // board hết nước mà sống lại thành 'playing' thì nước đi nào cũng là
         // no-op nên overlay GAME OVER không bao giờ mở.
+        // WIN xét TRƯỚC stuck: save ở trạng thái won && !keepPlaying chính là
+        // ca "vừa tạo 2048 vừa hết nước" của Review Focus mục 5 đi qua đĩa, nên
+        // overlay chỉ được là 'win'; over chỉ lộ ra sau khi người chơi keepPlaying.
         const stuck = !canMove(board)
         return {
           ...common,
@@ -87,7 +90,7 @@ export function createSession(opts: {
           moves: resume.moves,
           won: resume.won,
           keepPlaying: resume.keepPlaying,
-          status: stuck ? 'over' : resume.won && !resume.keepPlaying ? 'won' : 'playing',
+          status: resume.won && !resume.keepPlaying ? 'won' : stuck ? 'over' : 'playing',
           thresholdMark: Math.floor(resume.score / THRESHOLD_STEP) * THRESHOLD_STEP,
         }
       }
