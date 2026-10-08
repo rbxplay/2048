@@ -53,6 +53,31 @@ pause, accessibility, bundle size — và đó là những gì tài liệu này 
 | D7 | Font: bundle WOFF2 subset, giấy phép OFL | Numeral là nội dung; cần render giống nhau trên 4 môi trường cert |
 | D8 | Vite + TypeScript + vitest + `vite-plugin-singlefile` | Khớp RPS; singlefile cho ra đúng 1 `index.html`, dễ kiểm bundle |
 | D9 | Cổng dev **8080** | Khớp sample chính thức của Google, để SDK Test Suite trỏ vào được |
+| D10 | **Phaser 4.2.1 là engine render. Toàn bộ UI nằm trong canvas** — board, HUD, dialog, Settings, D-pad | Người dùng chọn. Xem §2.1 để biết giá phải trả |
+| D11 | **`Phaser.Scale.RESIZE`, KHÔNG dùng `FIT`** | `FIT` là CSS scaling → nhoè ở DPI cao, mâu thuẫn yêu cầu cert "crisp at every resolution and DPI" mà §B3 dẫn ra. Tài liệu Phaser ghi `RESIZE` là "No CSS scaling — 1:1 pixel mapping" |
+| D12 | **Dựng tầng DOM ẩn song song cho accessibility** | Canvas không có cây accessibility. Accessibility là một trong 8 nhóm review của cert (§A1) |
+| D13 | **NFR-01 nâng lên ≤ 2 MiB raw / ≤ 600 KiB gzip** | Phaser 4.2.1 đo được **1.31 MiB raw / 344 KiB gzip** (§13.4). Trần cert vẫn là 30 MiB MUST, ta ở ~5% |
+
+### 2.1 Giá phải trả khi chọn Phaser
+
+Số đo thật, không ước lượng:
+
+| Hạng mục | Đo được |
+|---|---|
+| `phaser.min.js` raw | **1 375 976 byte = 1.31 MiB** |
+| `phaser.min.js` gzip -9 | **352 222 byte = 344 KiB** |
+| Trần cert initial bundle (MUST) | 30 MiB → ta ở **~5%** |
+| Ngân sách NFR-01 cũ (400 KiB gzip) | Phaser chiếm **86%** → không đạt được |
+| Ngân sách NFR-01 mới (600 KiB gzip) | Phaser + code + font ≈ 400 KiB → còn biên |
+
+Hai hệ quả kiến trúc bắt buộc, không phải lựa chọn:
+
+1. **`Scale.RESIZE` thay vì `FIT`** (D11). `FIT` áp CSS scaling lên canvas, đúng thứ §B3 cấm vì làm mờ ở DPI cao. `RESIZE` khớp canvas 1:1 với viewport, nên phải tự tính layout từ kích thước thật, cộng `Text.setResolution(devicePixelRatio)` cho chữ.
+
+2. **Tầng DOM ẩn cho accessibility** (D12). Trong bản DOM/CSS, `role="grid"` và `aria-live` là miễn phí. Trong canvas thì không có gì cả, nên phải dựng một tầng DOM song song: live region cho trạng thái bàn cờ và điểm, cùng các điều khiển thật cho bàn phím. Đây là công việc thêm thật sự và là rủi ro R10 ở §16.
+
+**Điều KHÔNG đổi:** màu token §B11 dùng nguyên vẹn (Phaser nhận số hex), toán học board §B3 dùng nguyên vẹn (nó chỉ là hình học), và toàn bộ `src/game/` cùng `src/platform/` không biết Phaser là gì.
+
 
 ---
 
@@ -61,38 +86,49 @@ pause, accessibility, bundle size — và đó là những gì tài liệu này 
 ### 3.1 Sơ đồ
 
 ```
-index.html                      SDK <script> + màn loading tĩnh
- └─ src/main.ts                 composition root: boot → chọn platform → state → render
-     ├─ src/game/               luật chơi thuần
-     ├─ src/platform/           adapter SDK
-     ├─ src/render/             DOM tile, animation
-     ├─ src/input/              pointer + keyboard → Dir
+index.html                      SDK <script> + màn loading tĩnh (DOM, hiện ngay first paint)
+ ├─ #game-container             Phaser canvas — board + HUD + dialog + Settings + D-pad
+ ├─ #a11y                       tầng DOM ẩn song song — live region + điều khiển bàn phím
+ └─ src/main.ts                 composition root: boot → platform → session → Phaser
+     ├─ src/game/               luật chơi thuần — KHÔNG biết Phaser là gì
+     ├─ src/platform/           adapter SDK — KHÔNG biết Phaser là gì
+     ├─ src/app/session.ts      state machine của ván — thuần
+     ├─ src/phaser/             engine Phaser 4
+     │  ├─ config.ts            GameConfig: Scale.RESIZE, DPR, màu
+     │  ├─ scenes/Boot.ts       tạo player, đo font, chuyển scene
+     │  ├─ scenes/Board.ts      board, tile pool, tween, input kéo
+     │  ├─ views/hud.ts         text object cho điểm, kỷ lục, badge
+     │  ├─ views/dialogs.ts     overlay WIN / GAME OVER
+     │  ├─ views/settings.ts    slider, toggle, chọn theme
+     │  └─ views/dpad.ts        4 nút cảm ứng
+     ├─ src/a11y/               cầu nối canvas ↔ screen reader
      ├─ src/audio/              WebAudio tổng hợp SFX
      ├─ src/i18n/               en + vi
-     └─ src/styles/             tokens.css + app.css
+     └─ src/styles/             tokens.css — nguồn sự thật màu, đọc bởi cả Phaser
 ```
+
+**Điểm quan trọng:** `src/styles/tokens.css` vẫn là nguồn sự thật của màu, nhưng Phaser cần giá trị hex chứ không phải `var(--t2)`. Nên `src/phaser/theme.ts` **đọc** token một lần lúc boot rồi chuyển thành bảng số, thay vì chép hex vào hai chỗ. Chép tay thì sớm muộn hai nguồn lệch nhau.
 
 ### 3.2 Nguyên tắc tách bạch
 
 Ba quy tắc, kiểm được bằng đọc import:
 
-1. **`src/game/` chỉ được import từ `src/game/`.** Không DOM, không `window`, không timer,
-   không SDK, không `Math.random` trực tiếp. Đây là điều kiện để `game/` test được trong môi
-   trường thuần và để luật chơi không phụ thuộc tốc độ animation.
-2. **`src/render/` không quyết định luật.** Nó nhận `MoveOutcome` đã tính xong và chỉ hiển thị.
-   Không có nhánh `if` nào trong renderer đọc board để quyết định điều gì xảy ra tiếp.
-3. **`src/platform/` không chứa luật chơi.** Nó chỉ chuyển tiếp sang SDK và luôn suy giảm an toàn.
+1. **`src/game/` chỉ được import từ `src/game/`.** Không DOM, không Phaser, không `window`, không timer, không SDK, không `Math.random` trực tiếp. Đây là điều kiện để luật chơi test được trong môi trường thuần — và là lý do đổi engine từ DOM sang Phaser chỉ tốn 0 dòng trong `game/`.
+2. **`src/phaser/` không quyết định luật.** Nó nhận `MoveOutcome` đã tính xong và chỉ hiển thị. Không có nhánh `if` nào trong scene đọc board để quyết định điều gì xảy ra tiếp.
+3. **`src/platform/` không chứa luật chơi và không biết engine.** Nó chỉ chuyển tiếp sang SDK và luôn suy giảm an toàn.
 
 ### 3.3 Ranh giới trách nhiệm
 
 | Module | Sở hữu | Không sở hữu |
 |---|---|---|
-| `game/` | board, luật merge, tính điểm, điều kiện win/over, serialize/parse save | thời gian, DOM, SDK |
-| `platform/` | vòng đời SDK, cloud save, ads, mute, pause/resume | luật chơi, cấu trúc save |
-| `render/` | DOM tile, animation, layout, theme | luật chơi, trạng thái game |
-| `input/` | pointer/keyboard → `Dir` | hàng đợi input, luật chơi |
+| `game/` | board, luật merge, tính điểm, điều kiện win/over, serialize/parse save | thời gian, DOM, SDK, engine |
+| `app/session.ts` | state machine của ván, milestone, ưu tiên overlay | DOM, Phaser, SDK |
+| `platform/` | vòng đời SDK, cloud save, ads, mute, pause/resume | luật chơi, cấu trúc save, engine |
+| `phaser/scenes/` | board, tile pool, tween, input kéo | luật chơi, trạng thái game |
+| `phaser/views/` | HUD, dialog, Settings, D-pad vẽ trong canvas | luật chơi, trạng thái game |
+| `a11y/` | cầu nối canvas ↔ screen reader, điều khiển bàn phím | luật chơi, hiển thị |
 | `audio/` | tổng hợp SFX, gain, mute | quyết định khi nào phát (main quyết định) |
-| `main.ts` | ghép nối, hàng đợi input, state machine, milestone save | chi tiết của bất kỳ module nào |
+| `main.ts` | ghép nối vòng đời, milestone save | chi tiết của bất kỳ module nào |
 
 `platform/` **import `SaveData` từ `game/persist` nhưng chỉ ở dạng type** (`import type`). Việc
 serialize và parse nằm hoàn toàn trong `game/`; adapter chỉ chuyển chuỗi qua lại. Adapter không
@@ -243,18 +279,36 @@ preflight quét cả `--src` (§5c).
 
 ### 5b. Optional chaining che mất SDK call
 
-Preflight tìm các call bằng regex literal:
+Preflight tìm các call bằng regex literal trên **nội dung file**, không phân tích cú pháp:
 
 ```python
 ('game-ready',  re.compile(r'\.game\.gameReady|gameReady\s*\('), ...)
 ('load-data',   re.compile(r'\.game\.loadData|loadData\s*\('), ...)
+('save-data',   re.compile(r'\.game\.saveData|saveData\s*\('), ...)
+('audio-check', re.compile(r'isAudioEnabled|onAudioEnabledChange'), ...)
 ```
 
 RPS viết `this.#sdk?.game?.gameReady?.()`. Chuỗi `gameReady?.()` có `?.` xen giữa tên và `(`
-nên **`gameReady\s*\(` không khớp**. Cả bốn check life-cycle đều trượt vì cùng một lý do.
+nên **`gameReady\s*\(` không khớp**, và minifier giữ nguyên `?.`. Cả bốn check life-cycle trượt
+vì cùng một lý do.
+
+**Một chi tiết quyết định ai là bề mặt bị kiểm:** preflight chỉ quét các đuôi file
+
+```
+.js  .mjs  .cjs  .html  .htm  .css  .json  .txt  .svg
+```
+
+**`.ts` không nằm trong danh sách.** Nên với một dự án TypeScript:
+
+- `--src ./src` **không quét được file `.ts` nào** — kể cả `ytgame.d.ts` có khai báo
+  `gameReady(): void`.
+- Bề mặt thật sự bị kiểm là **`dist/`**, tức bundle đã build và đã minify.
+
+Hệ quả: khai báo type **không** thoả mãn check này. Tên call phải xuất hiện dưới dạng literal
+trong **JS đã build**.
 
 **Cách sửa cho 2048:** lấy SDK ra biến cục bộ, kiểm tra sự tồn tại bằng `if`, rồi gọi tên method
-trực tiếp. Vừa an toàn hơn vì tách guard khỏi call, vừa qua được check.
+trực tiếp. Vừa an toàn hơn vì tách guard khỏi call, vừa để lại literal trong bundle.
 
 ```ts
 notifyGameReady(): void {
@@ -263,7 +317,7 @@ notifyGameReady(): void {
   const game = sdk.game
   if (game === undefined) return
   try {
-    game.gameReady()          // literal — preflight thấy
+    game.gameReady()          // literal — preflight thấy trong dist
   } catch {
     // nền tảng lỗi không được làm hỏng game
   }
@@ -273,18 +327,29 @@ notifyGameReady(): void {
 Áp dụng cho: `firstFrameReady()`, `gameReady()`, `loadData()`, `saveData()`, và
 `isAudioEnabled` / `onAudioEnabledChange`.
 
-### 5c. Ràng buộc ngầm lên mã nguồn
+### 5c. Preflight có điểm mù với TypeScript — bù bằng script riêng
 
-Preflight quét cả `--src`. Nên **mã nguồn không được chứa literal**:
+Vì `.ts` không được quét (§5b), **toàn bộ mã nguồn TypeScript nằm ngoài tầm kiểm của preflight**.
+Một dòng `localStorage` viết trong `src/platform/mock.ts` sẽ không bị preflight phát hiện ở tầng
+nguồn — nó chỉ lộ ra khi đã lọt vào `dist/`.
+
+Đây đúng là cách RPS trượt: `mock.ts` dùng bộ nhớ trình duyệt, và lỗi chỉ hiện ở `dist/index.html`.
+
+**Cách bù cho 2048:** `scripts/check-bundle.mjs` (§13.3) quét `dist/` và là lá chắn thật sự. Nó
+chạy trong `npm run check:bundle`, độc lập với preflight, và bắt:
 
 ```
-localStorage · sessionStorage · indexedDB · document.cookie
-visibilitychange · document.visibilityState
-XMLHttpRequest · WebSocket · sendBeacon
+bộ nhớ trình duyệt · Page Visibility API · request ngoài · SDK quảng cáo bên thứ ba
 ```
 
-kể cả trong comment. Comment tiếng Việt phải gọi đó là "bộ nhớ trình duyệt". Đây là lý do mock
-dùng store trong bộ nhớ chứ không dùng bộ nhớ trình duyệt.
+Cộng thêm hai biện pháp ở tầng nguồn:
+
+- **Mock adapter dùng store trong bộ nhớ**, không dùng bộ nhớ trình duyệt — để kể cả khi nó có
+  lọt vào bundle thì cũng vô hại, và để nó không bao giờ lọt (nhánh dev bị loại lúc build, §5a).
+- **Không viết các literal cấm trong bất kỳ file nào**, kể cả comment `.ts`. Không phải vì
+  preflight bắt — nó không bắt — mà vì một `grep` của người review sẽ thấy, và vì nếu sau này có
+  file `.js` nào trong `src/` thì preflight sẽ bắt thật. Comment tiếng Việt gọi đó là
+  "bộ nhớ trình duyệt".
 
 ### 5d. Sửa PRD §6
 
@@ -425,47 +490,87 @@ animation (§B5). Nhịp chơi phải giống hệt bản thường.
 
 ---
 
-## 8. Render
+## 8. Render (Phaser 4)
 
-### 8.1 Cấu trúc DOM
+### 8.1 GameConfig
 
-```html
-<div class="board" role="grid" aria-rowcount="4" aria-colcount="4">
-  <div class="slot" aria-hidden="true"></div>   <!-- ×16, tĩnh -->
-  <div class="tile" data-value="64" role="gridcell" aria-label="ô 64"></div>
-  <!-- tile nằm trong cùng grid, dùng grid-area -->
-</div>
+```ts
+// src/phaser/config.ts
+const config: Phaser.Types.Core.GameConfig = {
+  type: Phaser.AUTO,                       // WebGL, fallback Canvas
+  parent: 'game-container',
+  backgroundColor: theme.page,
+  scale: {
+    mode: Phaser.Scale.RESIZE,             // D11: KHÔNG dùng FIT
+    autoCenter: Phaser.Scale.NO_CENTER,
+    width: '100%',
+    height: '100%',
+  },
+  render: {
+    antialias: true,
+    roundPixels: false,                    // giữ độ nét của số khi chia tỉ lệ
+  },
+  scene: [Boot, Board],
+}
 ```
 
-Board là CSS grid 4×4 (`grid-template: repeat(4, 1fr) / repeat(4, 1fr)`, `gap: var(--gap)`).
-Vị trí tile là ô grid. Animation slide dùng `transform: translate()` trên element tile, **không**
-dùng toạ độ tuyệt đối tính lại mỗi lần resize (§B3).
+`RESIZE` khớp canvas 1:1 với viewport nên không có CSS scaling. Đây là điều kiện để giữ đúng
+yêu cầu cert *"crisp rendering at every resolution and DPI"* mà §B3 dẫn ra.
 
-### 8.2 Pool tile
+`roundPixels: false` là cố ý: bật nó làm chữ số bị nhảy nửa pixel ở DPI lẻ.
 
-Tile element tạo một lần và tái sử dụng (§A12). Vì `Tile.id` ổn định (§6.1), renderer giữ
-`Map<number, HTMLElement>` và di chuyển đúng element đó sang `grid-area` mới.
+### 8.2 Bố cục tính từ kích thước thật
 
-- **Slide:** `transform: translate(dx, dy)`, `--dur-slide: 100ms`, ease `--ease-standard`
-- **Merge pop:** scale 1 → 1.18 → 1, `--dur-pop: 200ms`; scale tile, **không** scale numeral
-- **Spawn appear:** scale 0 → 1 + fade, `--dur-appear: 200ms`, delay `--delay-appear: 100ms`
-- Chỉ animate `transform` / `opacity` / `filter` — không bao giờ `width`/`height`/`top`/`left`
-  (§B5: layout thrash = mất frame trên Android tầm trung)
-- `contain: layout paint` trên board; `touch-action: none` để drag không cuộn trang
+Không có CSS để lo phần layout, nên mọi thứ tính bằng tay từ `scale.width` / `scale.height`:
 
-### 8.3 Không dùng `transform: scale()` trên board
+```ts
+// src/phaser/layout.ts — hàm THUẦN, test được không cần Phaser
+export type Layout = {
+  boardSide: number
+  gap: number
+  cell: number
+  boardX: number      // gốc trái-trên của bàn cờ, toạ độ game
+  boardY: number
+  hudY: number
+  dpadY: number
+}
 
-§B3 cấm rõ: board phải dùng kích thước CSS pixel gốc, không bao giờ scale bằng transform — scale
-làm mờ ở DPI cao, mà cert yêu cầu *"crisp rendering at every resolution and DPI"*. Kích thước
-tính từ `--board` / `--gap` / `--cell` trong `tokens.css`, cập nhật qua `ResizeObserver`.
+export function computeLayout(width: number, height: number): Layout
+```
 
-### 8.4 Theme
+Công thức lấy nguyên từ §B3 (`gap = boardSide * 0.03`, `cell = (boardSide − 5×gap) / 4`), chỉ đổi
+đầu ra từ biến CSS sang toạ độ game. Bàn cờ căn giữa; nếu viewport rộng hơn cao thì thừa ra hai
+bên được lấp bằng `backgroundColor` — đúng luật "fill the viewport, or centre + letterbox" `[SRC]`.
 
-`tokens.css` dán nguyên văn từ §B11, gồm cả selector `[data-theme="dark"]` và
-`[data-theme="contrast"]`. §B16 yêu cầu giữ selector kể cả khi không mở ra cho người chơi; v1
-**có** mở, đặt trên `<html data-theme="…">`.
+### 8.3 Tile pool và tween
 
----
+Mỗi tile là một `Phaser.GameObjects.Container` gồm một `Rectangle` (nền) và một `Text` (số).
+Pool khoá theo `Tile.id` — cùng lý do như §6.1: id ổn định nên **di chuyển chính container đó**
+thay vì tạo lại, đúng yêu cầu §A12 *"never re-created per move"*.
+
+| Hoạt động | Cách làm | Thời lượng |
+|---|---|---|
+| Slide | `this.tweens.add({ targets: container, x, y, ease: 'Sine.easeInOut' })` | `--dur-slide` 100 ms |
+| Merge pop | tween `scale` 1 → 1.18 → 1 trên container | `--dur-pop` 200 ms |
+| Spawn appear | `scale` 0 → 1 + `alpha` 0 → 1, delay 100 ms | `--dur-appear` 200 ms |
+| Badge `+N` | `Text` tween `y` và `alpha` | `--dur-badge` 600 ms |
+
+Chỉ tween `x`, `y`, `scale`, `alpha` — không đụng `width`/`height`.
+
+**Reduced motion:** `this.tweens.killAll()` rồi đặt thẳng vị trí cuối. `Phaser.Scene.tweens.timeScale`
+không dùng được vì nó làm chậm chứ không bỏ; phải rẽ nhánh tường minh.
+
+**Resize giữa lúc tween** (Review Focus mục 3): `scale.on('resize')` → `tweens.killAll()` → tính lại
+layout → đặt mọi tile về đúng vị trí cuối. Không làm vậy thì tween đang chạy theo toạ độ cũ và tile
+bay sai chỗ.
+
+### 8.4 Theme và font
+
+- `src/phaser/theme.ts` đọc `tokens.css` một lần lúc boot (qua `getComputedStyle(document.documentElement)`)
+  và đổi `#RRGGBB` sang số `0xRRGGBB` cho Phaser. Không chép hex vào code.
+- `Text` cho numeral tile: `fontFamily` là font đã bundle, `setResolution(window.devicePixelRatio)`
+  để nét ở DPI cao, và `fontSize` theo công thức §B2 (`cell × k`, k = 0.51 / 0.42 / 0.33 / 0.28).
+- Đổi theme lúc chạy: cập nhật lại bảng màu và `setFill` cho mọi tile đang có, không dựng lại scene.
 
 ## 9. Tích hợp YouTube Playables
 
@@ -616,30 +721,52 @@ khác nhau giữa Android / iOS / Windows.
 
 ## 12. Accessibility
 
-| Yêu cầu | Cách làm | Mức |
+Canvas không có cây accessibility, nên phần lớn A11Y trong PRD **không** tự có. Đây là công việc
+phải làm tường minh, và là rủi ro R10.
+
+### 12.1 Tầng DOM ẩn song song (`#a11y`)
+
+Một `div` có `position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)`
+— ẩn khỏi mắt thường nhưng **vẫn trong cây accessibility** (khác hẳn `display: none` và
+`visibility: hidden`, hai thứ này gỡ luôn khỏi cây a11y). Bên trong gồm:
+
+| Phần tử | Vai trò | Cập nhật khi |
 |---|---|---|
-| Tương phản numeral | Palette §B1.2 đã đo — cả 13 giá trị ≥ 4.5:1 | AA |
-| Tương phản UI text | Bảng §B1.3 đã đo | AA |
-| Focus ring | `outline: 3px solid var(--focus)`, `outline-offset: 2px`, ≥ 3:1 | AA |
-| Bàn phím | arrows + WASD chơi đủ; `Esc` đóng dialog; **không** `preventDefault()` trên `Esc` | MUST |
-| Screen reader | board `role="grid"` + `aria-rowcount`/`aria-colcount`; score `aria-live="polite"` throttle ≤ 1 lần / 2 s | — |
-| Reduced motion | bỏ slide/pop, đổi state tức thì + fade 120 ms; **không gate input** | — |
-| Target size | nút ≥ 44×44 px; D-pad ≥ 48 px | AA |
-| Haptics | toggle trong Settings; mặc định BẬT trên touch, TẮT trên desktop | MUST |
-| Không dựa vào màu | numeral luôn hiện; thang luminance đơn điệu 0.82 → 0.02 | — |
-| Zoom 200 % | không cắt, không chồng | — |
-| Hairline + shadow | mọi tile đều có — đây là thứ duy nhất tách tile khỏi slot (slot vs board chỉ 1.37:1) | — |
+| `div[role="grid"]` với 16 `div[role="gridcell"]` | phơi bàn cờ thành lưới 4×4, `aria-label` là giá trị từng ô | sau mỗi nước đi |
+| `div[aria-live="polite"]` cho điểm | thông báo điểm, **throttle ≤ 1 lần / 2 giây** | khi điểm đổi |
+| `div[aria-live="assertive"]` cho kết cục | "Bạn đạt 2048" / "Hết nước đi" | khi mở overlay |
+| `<button>` thật cho mọi hành động | D-pad, Settings, các nút trong dialog | dựng một lần |
+| `<input type="range">` và checkbox thật | slider SFX, haptics, reduced motion, theme | dựng một lần |
 
-Dialog: `role="dialog" aria-modal="true"`, trap focus, trả focus về element gọi nó, `Esc` đóng,
-không bao giờ tự đóng.
+Nút và ô nhập là **DOM thật**, không phải hình vẽ trong canvas. Nhờ vậy bàn phím, screen reader,
+zoom 200 % và target ≥ 44 px đều đạt mà không phải tự dựng lại.
 
----
+### 12.2 Đồng bộ hai chiều
+
+Canvas là nguồn sự thật về hiển thị; DOM a11y là **bản chiếu chỉ-đọc** của cùng state. Không có
+đường nào từ DOM quay lại sửa state ngoài việc phát cùng một `Dir` hoặc cùng một action — tức là
+DOM a11y đi qua đúng `applyInput` / `applyAction` như canvas. Không có đường thứ hai vào logic.
+
+### 12.3 Phần còn lại
+
+| Yêu cầu | Cách làm trong Phaser |
+|---|---|
+| Tương phản numeral | Palette §B1.2 đã đo, dùng nguyên |
+| Focus ring | CSS `:focus-visible` trên các phần tử DOM thật ở §12.1 |
+| Bàn phím | `attachKeyboardInput` như cũ, nối vào cùng `applyInput` |
+| `Esc` đóng dialog | Không `preventDefault()` — §A11 MUST, giữ nguyên |
+| Reduced motion | Rẽ nhánh tường minh trong scene (§8.3), không dùng `timeScale` |
+| Target ≥ 44 px | DOM thật + nút vẽ trong canvas đều đặt đúng kích thước |
+| Zoom 200 % | Canvas theo `RESIZE` nên tự khớp; DOM a11y không bị cắt |
+| Haptics | `navigator.vibrate` khi có, toggle trong Settings |
+
+
 
 ## 13. Build và đóng gói
 
 ### 13.1 Stack
 
-Vite + TypeScript + vitest + `vite-plugin-singlefile`, khớp RPS.
+Vite + TypeScript + vitest + `vite-plugin-singlefile` + **Phaser 4.2.1**.
 
 ```ts
 // vite.config.ts
@@ -657,7 +784,9 @@ export default defineConfig({
 })
 ```
 
-`viteSingleFile` gộp tất cả vào một `index.html` — đúng yêu cầu SPA, và dễ kiểm bundle.
+Phaser được import dạng ESM (`import Phaser from 'phaser'`) để Rollup tree-shake được phần không
+dùng. Thực tế cắt được rất ít — 2048 dùng scene, tween, text, input, scale, nên gần như toàn bộ
+engine ở lại. Đừng trông vào việc này để tiết kiệm.
 
 ### 13.2 Script
 
@@ -680,23 +809,23 @@ export default defineConfig({
 | File | Nguồn | Vai trò |
 |---|---|---|
 | `playables_preflight.py` | copy từ skill | A13 #14 — phải exit 0 |
-| `check_contrast.py` | §B12 của Design System | A13 — phải exit 0 |
-| `check-bundle.mjs` | viết mới | khẳng định `dist/` không chứa chuỗi cấm (§5a) |
-| `subset-font.py` | viết mới | sinh WOFF2 subset từ font gốc (chạy một lần, output commit) |
+| `check_contrast.py` | §B12 của Design System | phải exit 0 |
+| `check-bundle.mjs` | viết mới | `dist/` không chứa chuỗi cấm + không chứa sentinel của mock |
+| `subset-font.py` | viết mới | sinh WOFF2 subset (chạy một lần, output commit) |
 
-### 13.4 Ngân sách bundle
+### 13.4 Ngân sách bundle (NFR-01 đã sửa — D13)
 
-| Hạng mục | Ước tính |
+| Hạng mục | Đo được / ước tính |
 |---|---|
-| JS + CSS (sau singlefile) | ~40–60 KiB raw |
+| Phaser 4.2.1 `phaser.min.js` | **1.31 MiB raw / 344 KiB gzip** (đo thật, không ước lượng) |
+| Code game (TS, sau minify) | ~60–90 KiB raw |
 | Font WOFF2 subset | 15–25 KiB |
+| CSS (tokens + a11y) | ~4 KiB |
 | Âm thanh | **0** — tổng hợp |
-| **Tổng raw** | **~60–85 KiB** |
-| **Sau gzip** | **~20–30 KiB** |
+| **Tổng** | **~1.45 MiB raw / ~400 KiB gzip** |
+| **NFR-01 mới** | ≤ 2 MiB raw / ≤ 600 KiB gzip → **đạt, biên ~200 KiB** |
+| Trần cert (MUST) | 30 MiB → ta ở **~5%** |
 
-Mục tiêu NFR-01 là ≤ 400 KiB gzip / ≤ 1.5 MiB raw. Biên an toàn hơn 10×.
-
----
 
 ## 14. Kiểm thử
 
@@ -765,8 +894,8 @@ Lấy §A13 làm chuẩn, cộng thêm các mục đo được của tài liệu
 5. `python3 scripts/playables_preflight.py ./dist --src ./src` **exit 0** — RPS không đạt được
    mục này; ta phải đạt (§5).
 6. `node scripts/check-bundle.mjs` exit 0.
-7. Bundle sau gzip ≤ 400 KiB (NFR-01) — kỳ vọng thực tế ~30 KiB.
-8. QA a11y thủ công: chơi hết một ván chỉ bằng bàn phím; một ván chỉ bằng screen reader.
+7. Bundle sau gzip ≤ 600 KiB (NFR-01 đã sửa, D13) — kỳ vọng thực tế ~400 KiB, trong đó Phaser chiếm 344 KiB.
+8. QA a11y thủ công: chơi hết một ván chỉ bằng bàn phím; một ván chỉ bằng screen reader; kiểm bàn cờ đọc đúng thành lưới 4×4.
 
 ---
 
@@ -783,6 +912,9 @@ Lấy §A13 làm chuẩn, cộng thêm các mục đo được của tài liệu
 | R7 | Input queue nuốt cú vuốt | tb | tb | Hàng đợi sâu 1, luôn có phản hồi (§7) |
 | R8 | Gọi ads khi toggle portal chưa bật | tb | thấp | Checklist MO-04 trong release plan |
 | R9 | Preflight trượt vì lý do chưa biết | tb | tb | Chạy preflight **sớm**, ngay khi có skeleton build, không đợi tới cuối |
+| R10 | **Canvas không có cây accessibility ⇒ nhóm Accessibility từ chối** | **cao** | **cao** | Tầng DOM ẩn song song (§12.1). Đây là rủi ro mới lớn nhất khi chuyển sang Phaser. Phải test bằng screen reader thật, không được đoán |
+| R11 | Dùng nhầm `Scale.FIT` ⇒ CSS scaling ⇒ mờ ở DPI cao ⇒ trượt yêu cầu crisp-rendering | tb | tb | Chốt `Scale.RESIZE` trong `config.ts` (D11) + chụp ảnh kiểm ở DPR 1 / 2 / 3 |
+| R12 | Đổi theme lúc chạy mà không vẽ lại tile đang có ⇒ hai bảng màu trộn lẫn | tb | thấp | Một hàm `applyTheme()` duy nhất đi qua mọi tile đang sống (§8.4) |
 
 R9 được thêm so với PRD vì §5 cho thấy preflight có những bài kiểm không hiển nhiên, và phát
 hiện muộn sẽ tốn kém.
