@@ -474,6 +474,63 @@ describe('openDialog — §B8', () => {
 })
 
 /**
+ * §B8 (Task 14 để nợ, Task 18 trả): `aria-modal="true"` chỉ nói với trình đọc
+ * màn hình, nó không chặn chuột và bàn phím. `inert` mới là thứ chặn thật.
+ */
+describe('inert — nền bị khoá trong lúc dialog mở', () => {
+  beforeEach(() => {
+    bridge.mountControls({
+      onDir: () => {},
+      onSettings: () => {},
+      onSettingsChange: () => {},
+      initial: { sfxVolume: 0.7, haptics: true, reducedMotion: false, theme: 'light' },
+    })
+  })
+
+  const dpad = () => controlsRoot().querySelector<HTMLElement>('.a11y-dpad')!
+  const settingsBtn = () => controlsRoot().querySelector<HTMLElement>('.a11y-settings')!
+
+  it('mở dialog thì bàn cờ và các điều khiển nền bị inert', () => {
+    open([en.retry])
+    expect(boardRoot().hasAttribute('inert')).toBe(true)
+    expect(dpad().hasAttribute('inert')).toBe(true)
+    expect(settingsBtn().hasAttribute('inert')).toBe(true)
+  })
+
+  it('chính dialog KHÔNG bị inert — nút trong đó phải bấm được', () => {
+    open([en.retry])
+    expect(dialog()!.hasAttribute('inert')).toBe(false)
+    expect(dialogHost()!.hasAttribute('inert')).toBe(false)
+  })
+
+  it('đóng dialog thì gỡ inert khỏi mọi thứ', () => {
+    open([en.retry])
+    bridge.closeDialog()
+    expect(boardRoot().hasAttribute('inert')).toBe(false)
+    expect(dpad().hasAttribute('inert')).toBe(false)
+    expect(settingsBtn().hasAttribute('inert')).toBe(false)
+  })
+
+  it('đóng khi không có dialog thì không khoá gì cả', () => {
+    bridge.closeDialog()
+    expect(boardRoot().hasAttribute('inert')).toBe(false)
+    expect(dpad().hasAttribute('inert')).toBe(false)
+  })
+
+  it('mở lại sau khi đóng vẫn khoá nền', () => {
+    open([en.retry])
+    bridge.closeDialog()
+    open([en.keepPlaying])
+    expect(boardRoot().hasAttribute('inert')).toBe(true)
+  })
+
+  it('gốc cầu nối không bị inert — khoá nó là khoá luôn cả dialog', () => {
+    open([en.retry])
+    expect(bridge.root.hasAttribute('inert')).toBe(false)
+  })
+})
+
+/**
  * §12.2: canvas là nguồn sự thật, tầng này là bản chiếu CHỈ-ĐỌC. Nó không được
  * tự đổi trạng thái trình bày của mình theo một đường riêng — kể cả `Esc`, kể cả
  * những ca mà hai đường tình cờ trùng nhau.

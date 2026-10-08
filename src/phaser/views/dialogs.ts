@@ -98,6 +98,17 @@ export function buttonLabels(kind: DialogKind, strings: Strings): string[] {
   return BUTTONS[kind].map((spec) => strings[spec.labelKey])
 }
 
+/**
+ * Hành động của từng nút, CÙNG thứ tự với `buttonLabels`. HÀM THUẦN.
+ *
+ * Tồn tại để tầng ghép nối ánh xạ chỉ số nút → action mà KHÔNG chép lại bảng
+ * `BUTTONS`: hai bảng song song thì sớm muộn lệch nhau, và lệch ở đây nghĩa là
+ * bấm "Chơi tiếp" lại ra "Ván mới".
+ */
+export function buttonActions(kind: DialogKind): DialogAction[] {
+  return BUTTONS[kind].map((spec) => spec.action)
+}
+
 /** `0xRRGGBB` → `#rrggbb`, dạng mà `TextStyle.color` nhận. */
 function hex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`

@@ -270,6 +270,28 @@ export function createA11yBridge(): A11yBridge {
     }
   }
 
+  /**
+   * Khoá tầng nền trong lúc dialog mở.
+   *
+   * `aria-modal="true"` chỉ *nói* với trình đọc màn hình rằng phần còn lại là nền;
+   * nó KHÔNG chặn được chuột và bàn phím. `inert` mới chặn thật: phần tử `inert`
+   * không nhận focus, không nhận click, và bị loại khỏi cây accessibility. Thiếu
+   * nó thì nút D-pad và slider SFX phía sau dialog vẫn bấm được.
+   *
+   * TUYỆT ĐỐI không đụng tới `#game-container`: overlay của canvas nằm trong đó,
+   * mà `inert` chặn luôn pointer event — bật lên là nút "Chơi tiếp" trên canvas
+   * không bấm được nữa, đúng thứ Review Focus mục 1 cấm.
+   */
+  function setBackgroundInert(on: boolean): void {
+    const targets: Element[] = [boardRoot, ...Array.from(controlsRoot.children)]
+    for (const el of targets) {
+      // Chính dialog nằm trong `controlsRoot` và phải giữ tương tác được.
+      if (el === dialogHost) continue
+      if (on) el.setAttribute('inert', '')
+      else el.removeAttribute('inert')
+    }
+  }
+
   function openDialog(opts: OpenDialogOptions): void {
     // Chụp phần tử đã kích hoạt TRƯỚC khi `closeDialog()` kịp dời focus. `body`
     // không tính: nó không phải "phần tử đã mở dialog", chỉ là chỗ focus rơi về.
@@ -279,7 +301,6 @@ export function createA11yBridge(): A11yBridge {
         ? document.activeElement
         : null)
     closeDialog()
-
     const headingId = nextId('heading')
     const dialog = document.createElement('div')
     dialog.setAttribute('role', 'dialog')
@@ -303,6 +324,7 @@ export function createA11yBridge(): A11yBridge {
     dialogHost.appendChild(dialog)
     dialogEl = dialog
     restoreFocusTo = invokedFrom
+    setBackgroundInert(true)
 
     const first = dialog.querySelector('button')
     if (first !== null) first.focus()
@@ -322,6 +344,7 @@ export function createA11yBridge(): A11yBridge {
 
     dialog.removeEventListener('keydown', onDialogKeydown)
     dialog.remove()
+    setBackgroundInert(false)
 
     // Xoá vùng assertive. NVDA/JAWS so NỘI DUNG vùng live: gán lại đúng chuỗi
     // cũ — thua, bấm Retry, thua lần nữa — thì lần thứ hai bị im lặng. Xoá lúc
@@ -461,6 +484,9 @@ export function createA11yBridge(): A11yBridge {
       themeOptions,
       texts,
     }
+    // Dựng điều khiển trong lúc dialog đang mở là chuyện hiếm, nhưng bất biến
+    // "dialog mở thì nền bị khoá" phải đúng bất kể thứ tự gọi.
+    if (dialogEl !== null) setBackgroundInert(true)
     relabel()
     syncControls(opts.initial)
   }

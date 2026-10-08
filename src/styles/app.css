@@ -1,0 +1,110 @@
+/*
+  Khung trang (app shell).
+
+  Vì sao cần tệp này: `#game-container` là một div rỗng, và Phaser ở chế độ
+  `Scale.RESIZE` lấy kích thước canvas từ hộp bao của phần tử cha. Không có CSS
+  đặt chiều cao cho nó thì canvas cao 0 px — game chạy mà không thấy gì, và
+  không có test nào đỏ. Cùng lý do, `#screen` (màn loading tĩnh trong
+  index.html) phải phủ kín viewport và phải nằm TRÊN canvas cho tới khi
+  `main.ts` gỡ nó ở mốc `gameReady()`.
+
+  Mọi giá trị màu/chữ lấy từ token ở `tokens.css`, không chép hex (§8.4).
+*/
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font);
+  /* Canvas tự xử lý cú vuốt; cho trang cuộn theo là mất luôn nước đi. */
+  overscroll-behavior: none;
+}
+
+/* Vùng chơi phủ kín viewport. `fixed` để thanh địa chỉ của trình duyệt di động
+   đóng/mở không làm canvas nhảy chiều cao. */
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#game-container {
+  position: absolute;
+  inset: 0;
+}
+
+/* `touch-action: none` trên chính canvas: nếu không, trình duyệt nuốt cú vuốt
+   bằng touch thành thao tác cuộn trang trước khi Phaser đọc được pointerup. */
+#game-container canvas {
+  display: block;
+  touch-action: none;
+}
+
+/* Màn loading tĩnh — có sẵn trong HTML nên hiện ngay ở first paint. */
+#screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--page);
+  z-index: 1;
+}
+
+#screen[hidden] {
+  display: none;
+}
+
+.loading {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.loading__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.loading__bar {
+  width: 160px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--slot);
+  overflow: hidden;
+}
+
+/*
+  Màu thanh chạy lấy từ `--text` chứ không từ `--btn`: `--btn` chỉ được định
+  nghĩa ở `:root`, nên ở theme tối nó là nâu #8F4A22 trên nền #17161A — tương
+  phản 2.7:1, dưới mức 3:1 mà §B1.2 đòi cho thành phần đồ hoạ. Cặp
+  `--page`/`--text` thì theme nào cũng đạt vì đó chính là lý do nó tồn tại.
+*/
+.loading__bar > span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--text);
+  animation: loading-slide 1200ms var(--ease-standard) infinite;
+}
+
+@keyframes loading-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* §B5 / A11Y-06: tôn trọng `prefers-reduced-motion` — thanh loading đứng yên.
+   Không kéo dài nó ra 100%: thanh đầy nghĩa là "xong 100%", mà tiến độ thì
+   không biết — `role="status"` mới là chỗ truyền đạt trạng thái. */
+@media (prefers-reduced-motion: reduce) {
+  .loading__bar > span {
+    animation: none;
+  }
+}
