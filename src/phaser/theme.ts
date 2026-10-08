@@ -1,6 +1,7 @@
 import {
   CONTRAST_HAIRLINE_HEX, CONTRAST_HEX, CONTRAST_TILE_FG_HEX, CONTRAST_TILE_HEX,
-  DARK_HEX, HAIRLINE_DARK_HEX, HAIRLINE_LIGHT_HEX, MAX_TILE_TOKEN, TILE_FG_HEX,
+  DARK_HEX, HAIRLINE_DARK_ALPHA, HAIRLINE_DARK_HEX, HAIRLINE_LIGHT_ALPHA,
+  HAIRLINE_LIGHT_HEX, MAX_TILE_TOKEN, TILE_FG_HEX,
   TILE_HEX, TILE_VALUES, UI_HEX, hexToInt,
   type TileValue,
 } from '../theme/palette'
@@ -21,9 +22,17 @@ export type PhaserTheme = {
   textOnDark: number
   btn: number
   focus: number
+  /**
+   * §B1.5 — độ dày viền tile. Theme tương phản cao vẽ "white tiles with a 2-px
+   * black border", hai theme kia dùng hairline 1px của §B11:287-288. Nằm ở đây
+   * chứ không ở nơi vẽ vì CHỈ theme biết mình là theme nào.
+   */
+  hairlineWidth: number
   tileFill(value: number): number
   tileText(value: number): number
   tileHairline(value: number): number
+  /** Alpha của viền: §B4:162-163 theo bậc numeral, §B1.5 đen đặc ở contrast. */
+  tileHairlineAlpha(value: number): number
 }
 
 /** Giá trị tile đã quy về token gần nhất ≤ 8192. */
@@ -52,6 +61,10 @@ export function buildTheme(name: ThemeName = 'light'): PhaserTheme {
     slot: hexToInt(contrast ? CONTRAST_HEX.slot : dark ? DARK_HEX.slot : UI_HEX.slot),
     btn: hexToInt(UI_HEX.btn),
     focus: hexToInt(contrast ? CONTRAST_HEX.focus : dark ? DARK_HEX.focus : UI_HEX.focus),
+    // §B11:287-288 dày 1px; §B1.5 đổi thành 2px ở theme tương phản cao. Con số
+    // này khớp `CONTRAST_HAIRLINE_TOKENS` mà `tokens.css` sinh ra, nên hai tầng
+    // vẽ cùng một độ dày.
+    hairlineWidth: contrast ? 2 : 1,
 
     // Theme tương phản cao bỏ hẳn thang màu: mọi tile nền trắng, viền đen,
     // numeral đen. Giá trị vẫn đọc được vì numeral luôn hiện (§A11).
@@ -63,6 +76,10 @@ export function buildTheme(name: ThemeName = 'light'): PhaserTheme {
     tileHairline: (value) => {
       if (contrast) return hexToInt(CONTRAST_HAIRLINE_HEX)
       return hexToInt(value >= 64 ? HAIRLINE_DARK_HEX : HAIRLINE_LIGHT_HEX)
+    },
+    tileHairlineAlpha: (value) => {
+      if (contrast) return 1
+      return value >= 64 ? HAIRLINE_DARK_ALPHA : HAIRLINE_LIGHT_ALPHA
     },
   }
 }
