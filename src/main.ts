@@ -431,12 +431,15 @@ async function boot(): Promise<void> {
       getStrings: () => strings,
       onSettings: openSettings,
     })
+    // D-pad dựng TRƯỚC dialog và settings: display list vẽ theo thứ tự thêm vào,
+    // và ở viewport thấp D-pad nằm ngay vùng giữa màn — dựng sau thì nó vẽ đè lên
+    // card của dialog.
+    dpad = createDpad(sc, theme, layout, { onDir })
     dialogs = createDialogs(sc, theme, layout, {
       getStrings: () => strings,
       getLocale: () => locale,
       onAction: applyAction,
     })
-    dpad = createDpad(sc, theme, layout, { onDir })
     settings = createSettings(sc, theme, layout, {
       getStrings: () => strings,
       onChange: applySetting,

@@ -9,10 +9,11 @@ import type { PhaserTheme } from '../theme'
  * §B8: "4 buttons (48 px, 8 px gap) in a cross, bottom-centre, 70 % opacity,
  * auto-hide after 3 s of drag use, reappears on tap of the board."
  *
- * Hình học bám `Layout.dpadY`: đó là MÉP TRÊN của khối D-pad, không phải tâm.
- * Chữ thập được đặt cân trong khối đó nên mép trên của nút trên cùng rơi ĐÚNG
- * `dpadY` — không tràn lên đè board, giữ đúng bất biến `dpadY >= boardY +
- * boardSide` của §B3.
+ * Hình học bám `Layout.dpadX`/`dpadY`: đó là góc TRÊN-TRÁI của khối D-pad,
+ * không phải tâm. Chữ thập được đặt cân trong khối đó nên mép nút ngoài cùng rơi
+ * ĐÚNG mép khối — không tràn sang board. Khối nằm dưới board ở viewport dọc và
+ * sang bên phải board ở viewport thấp-rộng (A11Y-10); tệp này không cần biết là
+ * trường hợp nào.
  */
 
 /** §B8 / A11Y-07: nút D-pad ≥ 48 px. */
@@ -27,7 +28,8 @@ const GAP = 8
 /**
  * Bề rộng/chiều cao cả chữ thập: 3 ô nút và 2 khe = 160 px. Con số này bằng
  * đúng `DPAD_BLOCK` của `layout.ts` — đó không phải trùng hợp mà là hợp đồng:
- * `dpadY` chừa đúng chỗ này, nên đặt lệch đi là tràn ra ngoài khe dành cho nó.
+ * `dpadX`/`dpadY` chừa đúng chỗ này, nên đặt lệch đi là tràn ra ngoài khe dành
+ * cho nó.
  */
 const CROSS_SPAN = 3 * DPAD_BUTTON_PX + 2 * GAP
 /** §B6: "Sizes: 24 px optical ... stroke-width: 2, round caps". */
@@ -135,10 +137,10 @@ export function createDpad(
 
   function relayoutAll(): void {
     const step = DPAD_BUTTON_PX + GAP
-    const cx = l.width / 2
     // Tâm chữ thập ở giữa khối `[dpadY, dpadY + CROSS_SPAN]`, không phải ở
     // `dpadY + step`: đặt sai chỗ đó thì nút trên cùng tràn lên trên `dpadY` và
-    // đè board — đúng thứ bất biến của §B3 cấm.
+    // đè board — đúng thứ bất biến của §B3 cấm. Trục ngang cũng vậy với `dpadX`.
+    const cx = l.dpadX + CROSS_SPAN / 2
     const cy = l.dpadY + CROSS_SPAN / 2
     for (const n of nodes) {
       const x = cx + n.spec.dx * step

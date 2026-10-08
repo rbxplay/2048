@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { cellCenter, computeLayout, type Layout } from './layout'
+import { cellCenter, computeLayout, MIN_VIEWPORT_H, MIN_VIEWPORT_W, type Layout } from './layout'
 
 /** Chiều cao HUD theo §B3:144 `clamp(48px, 9vmin, 72px)` — 9vmin = 0.09 × cạnh NGẮN. */
 const hudHeightOf = (l: Layout) => Math.min(72, Math.max(48, 0.09 * Math.min(l.width, l.height)))
-/** Chiều cao khối D-pad, cùng hằng số `DPAD_BLOCK` trong `layout.ts`. */
+/** Cạnh khối D-pad, cùng hằng số `DPAD_BLOCK` trong `layout.ts`. */
 const DPAD_BLOCK = 160
+/** D-pad nằm hẳn DƯỚI board (xếp dọc) hoặc hẳn BÊN PHẢI board (xếp ngang). */
+const dpadClearOfBoard = (l: Layout) =>
+  l.dpadY >= l.boardY + l.boardSide || l.dpadX >= l.boardX + l.boardSide
 
 describe('computeLayout — công thức §B3', () => {
   it('gap là 3% cạnh board', () => {
@@ -51,9 +54,11 @@ describe('computeLayout — ràng buộc kích thước §B3', () => {
 })
 
 describe('computeLayout — cực đoan không làm vỡ', () => {
-  it('viewport 0 vẫn trả số hữu hạn', () => {
+  it('viewport 0 vẫn trả số hữu hạn và board có cạnh dương', () => {
     const l = computeLayout(0, 0)
     for (const v of Object.values(l)) expect(Number.isFinite(v)).toBe(true)
+    expect(l.boardSide).toBeGreaterThan(0)
+    expect(l.cell).toBeGreaterThan(0)
   })
 
   it('viewport cực lớn vẫn hữu hạn', () => {
@@ -103,12 +108,12 @@ describe('computeLayout — bất biến bố cục (Important #4)', () => {
         const l = computeLayout(w, h)
         const at = `${w}×${h}`
         for (const v of Object.values(l)) expect(Number.isFinite(v), at).toBe(true)
-        // Sàn 280 là TUYỆT ĐỐI (R8): cận trên co lại được, sàn thì không.
-        expect(l.boardSide, at).toBeGreaterThanOrEqual(280)
+        // 280 nay chỉ là cỡ ƯU TIÊN (A11Y-10): board co theo viewport, nhưng
+        // không bao giờ về 0 hay âm.
+        expect(l.boardSide, at).toBeGreaterThan(0)
         expect(l.boardSide, at).toBeLessThanOrEqual(560)
         expect(l.hudY, at).toBeGreaterThanOrEqual(0)
-        expect(l.dpadY, `${at}: dpadY >= boardY + boardSide`)
-          .toBeGreaterThanOrEqual(l.boardY + l.boardSide)
+        expect(dpadClearOfBoard(l), `${at}: D-pad không đè board`).toBe(true)
         expect(l.boardY, `${at}: boardY >= hudY + hudHeight`)
           .toBeGreaterThanOrEqual(l.hudY + hudHeightOf(l))
       }
@@ -119,24 +124,14 @@ describe('computeLayout — bất biến bố cục (Important #4)', () => {
     for (const [w, h] of [[Number.NaN, Number.NaN], [Number.POSITIVE_INFINITY, 0], [-100, -5]]) {
       const l = computeLayout(w!, h!)
       for (const v of Object.values(l)) expect(Number.isFinite(v)).toBe(true)
-      expect(l.dpadY).toBeGreaterThanOrEqual(l.boardY + l.boardSide)
+      expect(dpadClearOfBoard(l)).toBe(true)
       expect(l.boardY).toBeGreaterThanOrEqual(l.hudY + hudHeightOf(l))
     }
   })
 
-  // Lọt hẳn trong màn (kể cả `dpadY + DPAD_BLOCK <= h`) — CHỈ ba viewport dọc,
-  // vì đó là mục tiêu thật của game.
-  //
-  // KHÔNG assert điều này ở 1024×768 và 1920×400, và đây là lý do — để người
-  // sau không "sửa" nhầm:
-  //   · 1024×768 — cận trên theo chỗ đứng thật làm D-pad dán ĐÚNG đáy
-  //     (`dpadY + 160 = 768`), vừa khít không dư một px; đổi 1 px ở bất kỳ đâu
-  //     là đỏ, nên nó không phải một ràng buộc có nghĩa.
-  //   · 1920×400 — SÀN 280 THẮNG (`h − hudHeight − D-pad − đệm = 176 < 280`),
-  //     nên D-pad BUỘC phải tràn đáy. Đó là hành vi ĐÚNG, không phải nợ kỹ
-  //     thuật: §B3:154 xử viewport chật bằng "compact HUD, D-pad only" chứ
-  //     không bằng cách thu nhỏ bàn cờ, và sàn 280 tồn tại để giữ cỡ ô với cỡ
-  //     chữ đọc được. Bất biến thật sự phải giữ ở đây là "D-pad không ĐÈ board".
+  // Ba viewport dọc là mục tiêu thật của game. Mọi viewport khác — kể cả
+  // 1024×768 (D-pad dán ĐÚNG đáy, `dpadY + 160 = 768`) và các viewport thấp của
+  // zoom 200 % — do khối "A11Y-10" bên dưới quét, có dung sai dấu phẩy động.
   it.each([
     [320, 568],
     [375, 667],
@@ -146,11 +141,113 @@ describe('computeLayout — bất biến bố cục (Important #4)', () => {
     expect(l.dpadY + DPAD_BLOCK).toBeLessThanOrEqual(h!)
   })
 
-  it('1920×400: sàn 280 thắng nên D-pad tràn đáy, nhưng không đè board', () => {
+  // Trước đây ca này khẳng định "sàn 280 tuyệt đối thắng, D-pad tràn đáy". Phán
+  // quyết đó đã bị A11Y-10 đảo lại: không thứ gì được tràn khỏi viewport.
+  it('1920×400: D-pad sang bên phải board, không tràn đáy và không đè board', () => {
     const l = computeLayout(1920, 400)
-    expect(l.boardSide).toBe(280) // sàn §B3 TUYỆT ĐỐI, không hạ theo chỗ đứng
+    expect(l.boardSide).toBe(320) // 400 − HUD 48 − đệm 2×16
+    expect(l.dpadX).toBeGreaterThanOrEqual(l.boardX + l.boardSide)
+    expect(l.dpadY + DPAD_BLOCK).toBeLessThanOrEqual(400)
+    expect(l.boardY + l.boardSide).toBeLessThanOrEqual(400)
+  })
+})
+
+describe('computeLayout — A11Y-10: không cắt, không đè (zoom 200 %)', () => {
+  type Rect = { name: string; x: number; y: number; w: number; h: number }
+  const rects = (l: Layout): Rect[] => [
+    { name: 'HUD', x: l.hudX, y: l.hudY, w: l.hudWidth, h: l.boardY - l.hudY },
+    { name: 'board', x: l.boardX, y: l.boardY, w: l.boardSide, h: l.boardSide },
+    { name: 'D-pad', x: l.dpadX, y: l.dpadY, w: DPAD_BLOCK, h: DPAD_BLOCK },
+  ]
+  const EPS = 1e-6
+  const overlap = (a: Rect, b: Rect) =>
+    a.x < b.x + b.w - EPS && b.x < a.x + a.w - EPS && a.y < b.y + b.h - EPS && b.y < a.y + a.h - EPS
+
+  /** Zoom 200 % chia đôi viewport CSS: 1280×720 → 640×360, 520×800 → 260×400. */
+  const NAMED: Array<[number, number]> = [
+    [260, 400],
+    [320, 568],
+    [640, 360],
+    [384, 512],
+    [512, 384],
+    [960, 540],
+    [375, 667],
+    [768, 1024],
+    [1024, 768],
+    [1280, 720],
+    [1920, 1080],
+    [1920, 400],
+  ]
+
+  function expectFits(w: number, h: number): void {
+    const l = computeLayout(w, h)
+    const at = `${w}×${h}`
+    const rs = rects(l)
+    for (const r of rs) {
+      expect(r.w, `${at}: ${r.name} có bề ngang dương`).toBeGreaterThan(0)
+      expect(r.h, `${at}: ${r.name} có bề cao dương`).toBeGreaterThan(0)
+      expect(r.x, `${at}: ${r.name} tràn mép trái`).toBeGreaterThanOrEqual(-EPS)
+      expect(r.y, `${at}: ${r.name} tràn mép trên`).toBeGreaterThanOrEqual(-EPS)
+      expect(r.x + r.w, `${at}: ${r.name} tràn mép phải`).toBeLessThanOrEqual(w + EPS)
+      expect(r.y + r.h, `${at}: ${r.name} tràn đáy`).toBeLessThanOrEqual(h + EPS)
+    }
+    for (let i = 0; i < rs.length; i++) {
+      for (let j = i + 1; j < rs.length; j++) {
+        expect(overlap(rs[i]!, rs[j]!), `${at}: ${rs[i]!.name} đè ${rs[j]!.name}`).toBe(false)
+      }
+    }
+  }
+
+  it.each(NAMED)('%i×%i: HUD, board, D-pad nằm trọn trong viewport và không đè nhau', (w, h) => {
+    expectFits(w, h)
+  })
+
+  it(`quét lưới từ viewport tối thiểu ${MIN_VIEWPORT_W}×${MIN_VIEWPORT_H} trở lên`, () => {
+    for (let w = MIN_VIEWPORT_W; w <= 2000; w += w < 720 ? 4 : 40) {
+      for (let h = MIN_VIEWPORT_H; h <= 1400; h += h < 720 ? 4 : 40) expectFits(w, h)
+    }
+  })
+
+  it.each([
+    [640, 360],
+    [512, 384],
+    [1920, 400],
+  ])('%i×%i: xếp dọc không giữ nổi 280 nên D-pad sang BÊN PHẢI board, board ≥ 280', (w, h) => {
+    const l = computeLayout(w, h)
+    expect(l.dpadX).toBeGreaterThanOrEqual(l.boardX + l.boardSide)
+    expect(l.boardSide).toBeGreaterThanOrEqual(280)
+  })
+
+  it('260×400: không cách xếp nào giữ nổi 280 nên board co lại, D-pad vẫn ở dưới và canh giữa', () => {
+    const l = computeLayout(260, 400)
+    expect(l.boardSide).toBeLessThan(280)
     expect(l.dpadY).toBeGreaterThanOrEqual(l.boardY + l.boardSide)
-    expect(l.dpadY + DPAD_BLOCK).toBeGreaterThan(400) // tràn đáy — chấp nhận được
+    expect(l.dpadX + DPAD_BLOCK / 2).toBeCloseTo(130, 6)
+    // HUD không co theo board: thẻ điểm cần bề ngang để số không đè nhau.
+    expect(l.hudWidth).toBeGreaterThan(l.boardSide)
+    expect(l.hudWidth).toBeGreaterThanOrEqual(252)
+  })
+
+  // Hồi quy: những viewport bản cũ đã lọt thì con số phải GIỮ NGUYÊN — số ở đây
+  // là kết quả của `computeLayout` trước khi sửa A11Y-10, chép lại làm mốc.
+  it.each([
+    [320, 568, { boardSide: 294.4, boardX: 12.8, boardY: 72.8, hudY: 24.8, dpadY: 408 }],
+    [375, 667, { boardSide: 345, boardX: 15, boardY: 97, hudY: 49, dpadY: 507 }],
+    [384, 512, { boardSide: 288, boardX: 48, boardY: 64, hudY: 16, dpadY: 352 }],
+    [768, 1024, { boardSide: 560, boardX: 104, boardY: 178.56, hudY: 109.44, dpadY: 864 }],
+    [1024, 768, { boardSide: 522.88, boardX: 250.56, boardY: 85.12, hudY: 16, dpadY: 608 }],
+    [960, 540, { boardSide: 315.4, boardX: 322.3, boardY: 64.6, hudY: 16, dpadY: 380 }],
+    [1280, 720, { boardSide: 479.2, boardX: 400.4, boardY: 80.8, hudY: 16, dpadY: 560 }],
+    [800, 900, { boardSide: 560, boardX: 120, boardY: 118, hudY: 46, dpadY: 740 }],
+    [1920, 1080, { boardSide: 560, boardX: 680, boardY: 208, hudY: 136, dpadY: 920 }],
+  ])('%i×%i: bố cục đã lọt từ trước giữ nguyên số', (w, h, expected) => {
+    const l = computeLayout(w, h)
+    for (const [key, value] of Object.entries(expected)) {
+      expect(l[key as keyof Layout], key).toBeCloseTo(value, 6)
+    }
+    expect(l.dpadX + DPAD_BLOCK / 2, 'D-pad canh giữa theo bề ngang').toBeCloseTo(w / 2, 6)
+    expect(l.hudX, 'HUD trùng mép board').toBeCloseTo(l.boardX, 6)
+    expect(l.hudWidth, 'HUD rộng bằng board').toBeCloseTo(l.boardSide, 6)
   })
 })
 

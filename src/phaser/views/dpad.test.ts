@@ -189,7 +189,7 @@ describe('createDpad — §B8: 4 nút 48 px, khe 8 px, hình chữ thập', () =
     expect(dy - DPAD_BUTTON_PX).toBe(8)
   })
 
-  it('nằm giữa theo chiều ngang và KHÔNG đè lên board ở mọi viewport thử được', () => {
+  it('nằm cân trong khối D-pad của layout và KHÔNG đè lên board ở mọi viewport thử được', () => {
     for (let w = 160; w <= 1600; w += 41) {
       for (let h = 240; h <= 1200; h += 67) {
         const l = computeLayout(w, h)
@@ -198,12 +198,14 @@ describe('createDpad — §B8: 4 nút 48 px, khe 8 px, hình chữ thập', () =
         const btns = s.buttons()
         expect(btns).toHaveLength(4)
 
-        // Trung bình cộng bốn tâm chính là tâm chữ thập ⇒ đúng giữa bề ngang.
+        // Trung bình cộng bốn tâm chính là tâm chữ thập ⇒ đúng giữa khối 160 px
+        // mà layout chừa. Khối đó ở giữa bề ngang khi xếp dọc, và ở bên phải
+        // board khi xếp ngang (A11Y-10) — nên mốc là `dpadX`, không phải `width / 2`.
         const cx = btns.reduce((a, b) => a + b.x, 0) / 4
-        expect(cx, `tâm ngang ${w}×${h}`).toBeCloseTo(l.width / 2)
+        expect(cx, `tâm ngang ${w}×${h}`).toBeCloseTo(l.dpadX + 80)
 
-        // §B3: `dpadY` là MÉP TRÊN khối D-pad và `dpadY >= boardY + boardSide`.
-        // Nút trên cùng phải nằm TRONG khối, không được tràn lên trên đè board.
+        // §B3: `dpadX`/`dpadY` là góc TRÊN-TRÁI khối D-pad, và khối đó nằm hẳn
+        // dưới hoặc hẳn bên phải board. Nút ngoài cùng phải nằm TRONG khối.
         // Dung sai 1e-9 px chỉ để bỏ qua sai số dấu phẩy động của `computeLayout`
         // (dpadY ở đây lệch 6e-14 so với số nguyên) — nhỏ hơn một pixel rất nhiều
         // nên không nới lỏng bất biến.
@@ -213,6 +215,11 @@ describe('createDpad — §B8: 4 nút 48 px, khe 8 px, hình chữ thập', () =
         // Cả chữ thập lọt bề ngang màn hình ở mọi cỡ máy thật.
         const left = Math.min(...btns.map((b) => b.x - b.width / 2))
         const right = Math.max(...btns.map((b) => b.x + b.width / 2))
+        expect(left, `mép trái khối ${w}×${h}`).toBeGreaterThanOrEqual(l.dpadX - 1e-9)
+        expect(
+          top >= l.boardY + l.boardSide - 1e-9 || left >= l.boardX + l.boardSide - 1e-9,
+          `không đè board ${w}×${h}`,
+        ).toBe(true)
         expect(left, `mép trái ${w}×${h}`).toBeGreaterThanOrEqual(-1e-9)
         expect(right, `mép phải ${w}×${h}`).toBeLessThanOrEqual(l.width + 1e-9)
       }

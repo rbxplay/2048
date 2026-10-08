@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { digitCount, tileFontSize, tileLabel } from './tileSpec'
+import { computeLayout, MIN_VIEWPORT_H, MIN_VIEWPORT_W } from './layout'
+import { digitCount, MIN_GLYPH_PX, tileFontSize, tileLabel } from './tileSpec'
 
 describe('tileLabel', () => {
   it('giá trị thường in thẳng', () => {
@@ -54,6 +55,16 @@ describe('tileFontSize — k của §B2', () => {
     for (const v of [2, 64, 128, 2048, 16384]) {
       expect(tileFontSize(v, 20)).toBeGreaterThan(0)
     }
+  })
+
+  it('ô nhỏ (board co dưới 280 px) không kéo numeral xuống dưới sàn 11 px của §B2', () => {
+    const { cell } = computeLayout(MIN_VIEWPORT_W, MIN_VIEWPORT_H)
+    expect(cell).toBeLessThan(MIN_GLYPH_PX / 0.33) // ca này thật sự chạm sàn
+    for (const v of [2, 64, 128, 2048, 16384, 131072]) {
+      expect(tileFontSize(v, cell)).toBeGreaterThanOrEqual(MIN_GLYPH_PX)
+    }
+    // Trên ngưỡng thì sàn không đụng tới hệ số k.
+    expect(tileFontSize(16384, 60)).toBeCloseTo(16.8, 5)
   })
 
   it('cell 0 không tạo NaN', () => {

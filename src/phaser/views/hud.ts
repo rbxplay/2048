@@ -182,7 +182,7 @@ export function createHud(
 
   function gearCenter(): { x: number; y: number } {
     return {
-      x: l.boardX + l.boardSide - GEAR_SIZE / 2,
+      x: l.hudX + l.hudWidth - GEAR_SIZE / 2,
       // Giữa hàng HUD. `Layout` không có trường `hudHeight` — nó là khoảng cách
       // giữa `hudY` và `boardY`.
       y: l.hudY + (l.boardY - l.hudY) / 2,
@@ -228,7 +228,7 @@ export function createHud(
     scoreValue.setFontSize(numSize)
     bestValue.setFontSize(numSize)
 
-    const cardsW = hudCardsWidth(l.boardSide)
+    const cardsW = hudCardsWidth(l.hudWidth)
     const half = hudCardWidth(cardsW, l.gap)
     const cardH = hudCardHeight(l)
     const y = l.hudY
@@ -236,13 +236,13 @@ export function createHud(
     // hình học gốc; lớn hơn thì giãn theo, không thì số đè lên nhãn.
     const valueTop = CARD_PAD_TOP + labelSize + LABEL_GAP
 
-    cards[0]!.setPosition(l.boardX + half / 2, y + cardH / 2).setSize(half, cardH)
-    cards[1]!.setPosition(l.boardX + cardsW - half / 2, y + cardH / 2).setSize(half, cardH)
+    cards[0]!.setPosition(l.hudX + half / 2, y + cardH / 2).setSize(half, cardH)
+    cards[1]!.setPosition(l.hudX + cardsW - half / 2, y + cardH / 2).setSize(half, cardH)
 
-    scoreLabel.setPosition(l.boardX + CARD_PAD_X, y + CARD_PAD_TOP)
-    scoreValue.setPosition(l.boardX + CARD_PAD_X, y + valueTop)
-    bestLabel.setPosition(l.boardX + cardsW - half + CARD_PAD_X, y + CARD_PAD_TOP)
-    bestValue.setPosition(l.boardX + cardsW - half + CARD_PAD_X, y + valueTop)
+    scoreLabel.setPosition(l.hudX + CARD_PAD_X, y + CARD_PAD_TOP)
+    scoreValue.setPosition(l.hudX + CARD_PAD_X, y + valueTop)
+    bestLabel.setPosition(l.hudX + cardsW - half + CARD_PAD_X, y + CARD_PAD_TOP)
+    bestValue.setPosition(l.hudX + cardsW - half + CARD_PAD_X, y + valueTop)
 
     drawGear()
   }
