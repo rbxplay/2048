@@ -23,19 +23,25 @@ export function choosePlatformKind(opts: { inPlayables: boolean; isDev: boolean 
  * Chọn implementation nền tảng lúc boot. KHÔNG BAO GIỜ throw — luôn trả về một
  * platform dùng được.
  *
- * `import('./mock')` là import ĐỘNG có chủ đích. Vite thay `import.meta.env.DEV`
- * bằng `false` lúc build production, nên cả nhánh lẫn chunk `mock.ts` bị loại
- * hoàn toàn khỏi bundle — đó là cơ chế bảo đảm §5a.
+ * `import.meta.env.DEV` phải nằm trong CHÍNH điều kiện `if`, và `import('./mock')`
+ * phải nằm trong nhánh đó.
+ *
+ * Vì sao: Vite thay `import.meta.env.DEV` bằng literal `false`. Chỉ khi ấy
+ * Rollup mới thấy nhánh dưới là code chết và xoá **cả** lời gọi `import('./mock')`
+ * — nhờ đó chunk `mock.ts` không bao giờ được sinh ra. Cách viết cũ (đưa cờ vào
+ * hàm thuần `choosePlatformKind` rồi kiểm tra kết quả trả về) trông tương đương
+ * nhưng Rollup chỉ thấy một lời gọi hàm, không gói được thành hằng số, nên nhánh
+ * sống sót và `mock.ts` lọt vào bundle production — đúng lỗi §5a mà
+ * `check-bundle.mjs` bắt được (sentinel `SPAWNED_BY_DEV_MOCK_ONLY`).
  */
 export async function selectPlatform(): Promise<GamePlatform> {
   try {
-    const kind = choosePlatformKind({
-      inPlayables: isPlayablesEnv(),
-      isDev: import.meta.env.DEV,
-    })
-    if (kind === 'mock') {
-      const { MockPlatform } = await import('./mock')
-      return new MockPlatform()
+    if (import.meta.env.DEV) {
+      const kind = choosePlatformKind({ inPlayables: isPlayablesEnv(), isDev: true })
+      if (kind === 'mock') {
+        const { MockPlatform } = await import('./mock')
+        return new MockPlatform()
+      }
     }
     return new YouTubePlatform()
   } catch (e) {
