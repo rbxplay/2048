@@ -132,6 +132,10 @@ export function createOverlayPresenter(deps: {
         // từ bảng đó), nhưng rơi vào `close` vẫn an toàn hơn là im lặng.
         deps.onAction(action ?? 'close')
       },
+      // Nút ✕ DOM đi đúng đường của ✕ canvas: cùng action `close`, cùng cổng
+      // chặn ở `actions.ts` — không có đường thứ hai.
+      closeLabel: strings.close,
+      onClose: () => deps.onAction('close'),
     })
     deps.place()
   }

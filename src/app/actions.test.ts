@@ -247,3 +247,44 @@ describe('applyAction — hành vi cũ giữ nguyên sau khi rời khỏi main.t
     expect(h.requests()).toBe(0)
   })
 })
+
+describe('nút ✕ DOM: một lần kích hoạt = một action `close` qua cùng cổng chặn', () => {
+  it('ván thua: đúng một ván mới và đúng một yêu cầu quảng cáo', () => {
+    const h = harness(2)
+    h.overlay.open()
+    const before = h.games()
+    h.press('close')
+    expect(h.games()).toBe(before + 1)
+    expect(h.requests()).toBe(1)
+    expect(h.state().status).toBe('playing')
+  })
+
+  it('ván thắng: chơi tiếp, KHÔNG ván mới, KHÔNG quảng cáo', () => {
+    const h = harness(0, { status: 'won', won: true, score: 500 })
+    const before = h.games()
+    h.overlay.open()
+    h.press('close')
+    expect(h.games()).toBe(before)
+    expect(h.requests()).toBe(0)
+  })
+
+  it('kích hoạt hai lần liên tiếp (Enter rồi click) vẫn chỉ tính một lần', () => {
+    const h = harness(2)
+    h.overlay.open()
+    const before = h.games()
+    h.press('close')
+    h.press('close')
+    expect(h.games()).toBe(before + 1)
+    expect(h.requests()).toBe(1)
+  })
+
+  it('pause thì ✕ không làm gì', () => {
+    const h = harness(2)
+    h.overlay.open()
+    h.setPaused(true)
+    const before = h.games()
+    h.press('close')
+    expect(h.games()).toBe(before)
+    expect(h.requests()).toBe(0)
+  })
+})

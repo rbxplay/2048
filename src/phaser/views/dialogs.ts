@@ -40,6 +40,11 @@ export type Dialogs = {
    * `buttonLabels` — tầng a11y đặt nút DOM thứ `i` lên hộp thứ `i`.
    */
   buttonRects(): Box[]
+  /**
+   * Ô chạm của nút ✕ trong card, toạ độ game — tầng a11y đặt nút ✕ DOM lên đúng
+   * hộp này, cùng cơ chế với `buttonRects`.
+   */
+  closeRect(): Box
   destroy(): void
 }
 
@@ -492,6 +497,9 @@ export function createDialogs(
     },
     buttonRects() {
       return buttons.map((b) => centredBox(b.bg))
+    },
+    closeRect() {
+      return centredBox(closeHit)
     },
     destroy() {
       // Gỡ tween trước khi huỷ hình.

@@ -42,18 +42,30 @@ const boardRoot = () => bridge.root.querySelector<HTMLElement>('.a11y-root-board
 const controlsRoot = () => bridge.root.querySelector<HTMLElement>('.a11y-root-controls')!
 const dialogHost = () => controlsRoot().querySelector<HTMLElement>('.a11y-dialog-host')
 const dialog = () => bridge.root.querySelector<HTMLElement>('[role="dialog"]')
+/** Nút HÀNH ĐỘNG của dialog — không tính nút ✕. */
 const dialogButtons = () =>
-  Array.from(bridge.root.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+  Array.from(
+    bridge.root.querySelectorAll<HTMLButtonElement>('[role="dialog"] button:not(.a11y-dialog-close)'),
+  )
+const xButton = () =>
+  bridge.root.querySelector<HTMLButtonElement>('[role="dialog"] .a11y-dialog-close')!
 
 /** Mở dialog với tiêu đề và nút cho trước; `restore` là tuỳ chọn của §B8. */
 function open(
   labels: string[],
-  options: { heading?: string; onActivate?: (i: number) => void; restoreFocusTo?: HTMLElement } = {},
+  options: {
+    heading?: string
+    onActivate?: (i: number) => void
+    onClose?: () => void
+    restoreFocusTo?: HTMLElement
+  } = {},
 ): void {
   const opts = {
     heading: options.heading ?? en.gameOverTitle,
     labels,
     onActivate: options.onActivate ?? ((): void => {}),
+    closeLabel: en.close,
+    onClose: options.onClose ?? ((): void => {}),
   }
   bridge.openDialog(
     options.restoreFocusTo === undefined ? opts : { ...opts, restoreFocusTo: options.restoreFocusTo },
@@ -450,22 +462,21 @@ describe('openDialog — §B8', () => {
     return ev
   }
 
-  it('Tab ở nút CUỐI vòng về nút đầu — focus không thoát khỏi dialog', () => {
+  it('Tab ở nút CUỐI vòng về nút đầu (✕) — focus không thoát khỏi dialog', () => {
     open([en.keepPlaying, en.newGame])
     const buttons = dialogButtons()
     buttons[1]!.focus()
     const ev = tab()
     expect(ev.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(buttons[0])
+    expect(document.activeElement).toBe(xButton())
   })
 
-  it('Shift+Tab ở nút ĐẦU vòng về nút cuối', () => {
+  it('Shift+Tab ở nút ĐẦU (✕) vòng về nút cuối', () => {
     open([en.keepPlaying, en.newGame])
-    const buttons = dialogButtons()
-    buttons[0]!.focus()
+    xButton().focus()
     const ev = tab(true)
     expect(ev.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(buttons[1])
+    expect(document.activeElement).toBe(dialogButtons()[1])
   })
 
   it('Tab ở nút GIỮA không bị chặn — nhường cho trình duyệt tự đi', () => {
@@ -523,6 +534,93 @@ describe('openDialog — §B8', () => {
  * §B8 (Task 14 để nợ, Task 18 trả): `aria-modal="true"` chỉ nói với trình đọc
  * màn hình, nó không chặn chuột và bàn phím. `inert` mới là thứ chặn thật.
  */
+describe('nút ✕ của dialog — bản DOM của nút đóng trên canvas', () => {
+  it('có đúng một <button> thật, tên lấy từ chuỗi i18n, không chữ nhìn thấy', () => {
+    open([en.keepPlaying, en.newGame])
+    const close = xButton()
+    expect(close.tagName).toBe('BUTTON')
+    expect(close.type).toBe('button')
+    expect(close.textContent).toBe(en.close)
+    expect(close.classList.contains('a11y-ctl')).toBe(true)
+    expect(bridge.root.querySelectorAll('.a11y-dialog-close')).toHaveLength(1)
+  })
+
+  it('chỉ tồn tại khi dialog đang mở', () => {
+    expect(xButton()).toBeNull()
+    open([en.retry])
+    expect(xButton()).not.toBeNull()
+    bridge.closeDialog()
+    expect(xButton()).toBeNull()
+    expect(bridge.root.querySelector('.a11y-dialog-close')).toBeNull()
+  })
+
+  it('nằm TRONG dialog, nên trong bẫy focus và không bị inert', () => {
+    open([en.retry])
+    const close = xButton()
+    expect(dialog()!.contains(close)).toBe(true)
+    expect(close.closest('[inert]')).toBeNull()
+  })
+
+  it('đứng ĐẦU thứ tự Tab — ✕ vẽ ở góc trên, trên các nút hành động', () => {
+    open([en.keepPlaying, en.newGame])
+    const order = Array.from(dialog()!.querySelectorAll('button'))
+    expect(order).toEqual([xButton(), ...dialogButtons()])
+  })
+
+  it('focus ban đầu vẫn ở nút hành động đầu, KHÔNG phải ✕', () => {
+    open([en.keepPlaying, en.newGame])
+    expect(document.activeElement).toBe(dialogButtons()[0])
+    expect(document.activeElement).not.toBe(xButton())
+  })
+
+  /** Bắn `Tab` từ phần tử đang có focus, đúng như trình duyệt sẽ làm. */
+  function tab(): KeyboardEvent {
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    ;(document.activeElement as HTMLElement).dispatchEvent(ev)
+    return ev
+  }
+
+  it('Tab đi một vòng qua mọi nút của dialog rồi quay về chỗ cũ', () => {
+    open([en.keepPlaying, en.newGame])
+    const all = [xButton(), ...dialogButtons()]
+    all[0]!.focus()
+    const visited: Element[] = []
+    for (let i = 0; i < all.length; i++) {
+      visited.push(document.activeElement!)
+      const ev = tab()
+      // Nút giữa nhường cho trình trình duyệt; ở đây jsdom không tự dời focus.
+      if (!ev.defaultPrevented) all[i + 1]?.focus()
+    }
+    expect(visited).toEqual(all)
+    expect(document.activeElement).toBe(all[0])
+  })
+
+  it('kích hoạt (click) gọi onClose đúng một lần và KHÔNG gọi onActivate', () => {
+    const onClose = vi.fn()
+    const onActivate = vi.fn()
+    open([en.keepPlaying, en.newGame], { onClose, onActivate })
+    xButton().click()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onActivate).not.toHaveBeenCalled()
+  })
+
+  it('đóng dialog vẫn trả focus về phần tử đã mở nó', () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    open([en.retry], { restoreFocusTo: opener })
+    xButton().focus()
+    bridge.closeDialog()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('Esc không bị đụng tới (không preventDefault)', () => {
+    open([en.retry])
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    xButton().dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(false)
+  })
+})
+
 describe('inert — nền bị khoá trong lúc dialog mở', () => {
   beforeEach(() => {
     bridge.mountControls({
@@ -869,8 +967,29 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     theme: rect(180, 310, 120, 48),
     settingsClose: rect(40, 380, 240, 48),
     dialogButtons: [],
+    dialogClose: null,
     ...over,
   })
+  it('✕ của dialog lên hộp được đưa, và gỡ chỗ khi hộp là null', () => {
+    bridge.openDialog({
+      heading: en.gameOverTitle,
+      labels: [en.retry],
+      onActivate: () => {},
+      closeLabel: en.close,
+      onClose: () => {},
+    })
+    const close = bridge.root.querySelector<HTMLElement>('.a11y-dialog-close')!
+    const r = rect(250, 120, 44, 44)
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 300)], dialogClose: r }))
+    expect(close.hasAttribute('data-placed')).toBe(true)
+    expect(close.style.left).toBe('250px')
+    expect(close.style.top).toBe('120px')
+    expect(close.style.width).toBe('44px')
+    expect(close.style.height).toBe('44px')
+    bridge.placeControls(placement({ dialogButtons: [rect(40, 300)], dialogClose: null }))
+    expect(close.hasAttribute('data-placed')).toBe(false)
+  })
+
   const box = (el: HTMLElement) => ({
     left: el.style.left,
     top: el.style.top,
@@ -888,8 +1007,8 @@ describe('placeControls — nút DOM nằm trên nút canvas', () => {
     mount()
     open([en.keepPlaying, en.newGame])
     const ctl = Array.from(controlsRoot().querySelectorAll('button, input, select'))
-    // 4 D-pad + Cài đặt + 4 ô nhập + Đóng + 2 nút dialog.
-    expect(ctl).toHaveLength(4 + 1 + 4 + 1 + 2)
+    // 4 D-pad + Cài đặt + 4 ô nhập + Đóng + ✕ dialog + 2 nút dialog.
+    expect(ctl).toHaveLength(4 + 1 + 4 + 1 + 1 + 2)
     for (const el of ctl) expect(el.classList.contains('a11y-ctl'), el.outerHTML).toBe(true)
     for (const el of controlsRoot().querySelectorAll('h2, .a11y-field__text')) {
       expect(el.classList.contains('a11y-sr'), el.outerHTML).toBe(true)

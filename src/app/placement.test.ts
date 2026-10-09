@@ -36,7 +36,7 @@ function sources(over: Partial<PlacementSources> = {}): PlacementSources {
       down: box(616, 612, 48, 48),
     },
     gear: box(876, 60, 44, 44),
-    dialog: { phase: 'closed', buttons: [] },
+    dialog: { phase: 'closed', buttons: [], close: box(790, 260, 44, 44) },
     settings: {
       phase: 'closed',
       controls: {
@@ -139,22 +139,47 @@ describe('placementFor — điều khiển nào đứng ở đâu, theo trạng 
 
   it('dialog MỞ: nút thứ i lên hộp thứ i, giữ đúng thứ tự', () => {
     const buttons = [box(450, 420, 380, 48), box(450, 360, 380, 48)]
-    const p = placementFor(sources({ dialog: { phase: 'open', buttons } }))
+    const p = placementFor(sources({ dialog: { phase: 'open', buttons, close: box(0, 0, 44, 44) } }))
     expect(p.dialogButtons).toEqual([
       { x: 450, y: 420, w: 380, h: 48 },
       { x: 450, y: 360, w: 380, h: 48 },
     ])
   })
 
+  it('dialog MỞ: ✕ lên đúng hộp ✕ của canvas', () => {
+    const close = box(790, 262, 44, 44)
+    const p = placementFor(sources({ dialog: { phase: 'open', buttons: [], close } }))
+    expect(p.dialogClose).toEqual({ x: 790, y: 262, w: 44, h: 44 })
+  })
+
+  it("dialog 'closing' / 'closed': không có ✕", () => {
+    const close = box(790, 262, 44, 44)
+    for (const phase of ['closing', 'closed'] as const) {
+      expect(placementFor(sources({ dialog: { phase, buttons: [], close } })).dialogClose, phase).toBeNull()
+    }
+  })
+
+  it('✕ sát mép viewport thì ring vẫn nằm trọn trong viewport (fitRing)', () => {
+    const src = sources({
+      viewport: { width: 260, height: 400 },
+      frame: frame(260, 400),
+      dialog: { phase: 'open', buttons: [], close: box(214, 2, 44, 44) },
+    })
+    const c = placementFor(src).dialogClose!
+    expect(c.x - RING_REACH).toBeGreaterThanOrEqual(0)
+    expect(c.y - RING_REACH).toBeGreaterThanOrEqual(0)
+    expect(c.x + c.w + RING_REACH).toBeLessThanOrEqual(260)
+  })
+
   it("dialog 'closing' / 'closed': không nút dialog nào được đặt, dù view còn giữ hình", () => {
     const buttons = [box(450, 420, 380, 48)]
     for (const phase of ['closing', 'closed'] as const) {
-      expect(placementFor(sources({ dialog: { phase, buttons } })).dialogButtons, phase).toEqual([])
+      expect(placementFor(sources({ dialog: { phase, buttons, close: box(0, 0, 44, 44) } })).dialogButtons, phase).toEqual([])
     }
   })
 
   it('mọi hộp đều qua khung canvas: canvas lệch gốc thì MỌI điều khiển lệch theo', () => {
-    const src = sources({ dialog: { phase: 'open', buttons: [box(450, 420, 380, 48)] } })
+    const src = sources({ dialog: { phase: 'open', buttons: [box(450, 420, 380, 48)], close: box(790, 262, 44, 44) } })
     const open = { ...src, settings: { ...src.settings, phase: 'open' as const } }
     const base = placementFor(open)
     const moved = placementFor({ ...open, frame: frame(1280, 720, { left: 7, top: 9 }) })
@@ -162,6 +187,7 @@ describe('placementFor — điều khiển nào đứng ở đâu, theo trạng 
       ...Object.values(p.dpad), p.settingsButton, p.sfx, p.haptics, p.reducedMotion, p.theme,
       p.settingsClose,
       ...p.dialogButtons,
+      p.dialogClose!,
     ]
     all(moved).forEach((r, i) => {
       expect(r.x).toBe(all(base)[i]!.x + 7)

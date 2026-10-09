@@ -35,7 +35,7 @@ export type PlacementSources = {
   viewport: Viewport
   dpad: Record<Dir, Box>
   gear: Box
-  dialog: { phase: DialogPhase; buttons: readonly Box[] }
+  dialog: { phase: DialogPhase; buttons: readonly Box[]; close: Box }
   settings: { phase: DialogPhase; controls: SettingsRects }
 }
 
@@ -86,8 +86,8 @@ export function fitRing(rect: A11yRect, viewport: Viewport): A11yRect {
  * Điều khiển nào đứng ở đâu, theo trạng thái hiện tại. HÀM THUẦN.
  *
  *  - D-pad và bánh răng: luôn ở chỗ canvas vẽ chúng.
- *  - Nút dialog: chỉ khi dialog đang MỞ THẬT. `'closing'` thì dialog DOM đã bị
- *    gỡ rồi, không còn nút nào để đặt.
+ *  - Nút dialog và nút ✕ của nó: chỉ khi dialog đang MỞ THẬT. `'closing'` thì
+ *    dialog DOM đã bị gỡ rồi, không còn nút nào để đặt.
  *  - Bốn ô nhập cài đặt và nút Đóng: lên đúng slider / toggle / nút theme / nút
  *    Đóng khi bảng Settings đang mở. Bảng đóng thì canvas KHÔNG vẽ chúng ở đâu
  *    cả. Bốn ô nhập vẫn phải nằm trong cây accessibility (§12.1) nhưng đã rời
@@ -115,5 +115,6 @@ export function placementFor(src: PlacementSources): A11yPlacement {
     // Nút Đóng của DOM bị `hidden` khi bảng đóng, nên hộp lúc đó không ai thấy.
     settingsClose: open ? at(c.close) : gear,
     dialogButtons: src.dialog.phase === 'open' ? src.dialog.buttons.map(at) : [],
+    dialogClose: src.dialog.phase === 'open' ? at(src.dialog.close) : null,
   }
 }

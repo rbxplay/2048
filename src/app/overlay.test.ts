@@ -93,8 +93,11 @@ function presenter() {
 }
 
 const dialogEl = () => bridge.root.querySelector<HTMLElement>('[role="dialog"]')
+/** Nút HÀNH ĐỘNG của dialog DOM — không tính nút ✕. */
 const domButtons = () =>
-  Array.from(bridge.root.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+  Array.from(
+    bridge.root.querySelectorAll<HTMLButtonElement>('[role="dialog"] button:not(.a11y-dialog-close)'),
+  )
 const assertive = () => bridge.root.querySelector('[aria-live="assertive"]')!
 
 describe('overlayForStatus — suy overlay từ status của state', () => {
@@ -167,6 +170,23 @@ describe('chỉ số nút → action khớp bảng của canvas', () => {
     presenter().open('over')
     domButtons()[0]!.click()
     expect(actions).toEqual(buttonActions('gameover'))
+  })
+})
+
+describe('nút ✕ DOM đi cùng đường action với nút ✕ của canvas', () => {
+  const closeBtn = () => bridge.root.querySelector<HTMLButtonElement>('.a11y-dialog-close')!
+
+  it("tên là chuỗi i18n `close` và kích hoạt phát đúng MỘT action 'close'", () => {
+    presenter().open('win')
+    expect(closeBtn().textContent).toBe(en.close)
+    closeBtn().click()
+    expect(actions).toEqual(['close'])
+  })
+
+  it('có ở cả hai loại dialog', () => {
+    presenter().open('over')
+    closeBtn().click()
+    expect(actions).toEqual(['close'])
   })
 })
 

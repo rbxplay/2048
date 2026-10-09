@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { en } from '../../i18n'
 import { computeLayout, type Layout } from '../layout'
 import { buildTheme } from '../theme'
-import { CARD_RADIUS, createDialogs, DIALOG_MAX_W, SHADOW_DY } from './dialogs'
+import { CARD_RADIUS, createDialogs, DIALOG_MAX_W, dialogCardWidth, SHADOW_DY } from './dialogs'
 import { createHud, GEAR_SIZE, hudCardsWidth } from './hud'
 
 /**
@@ -760,6 +760,42 @@ describe('createDialogs — buttonRects: chỗ đặt nút DOM của dialog', ()
     expect(after.w).toBe(DIALOG_MAX_W - 40)
     expect(after.x).toBeCloseTo(layoutDesktop.width / 2 - after.w / 2)
     expect(after).not.toEqual(before)
+  })
+})
+
+describe('createDialogs — closeRect: chỗ đặt nút ✕ DOM của dialog', () => {
+  const boxOf = (b: FakeGO) => ({ x: b.x - b.width / 2, y: b.y - b.height / 2, w: b.width, h: b.height })
+
+  it('là đúng ô chạm của nút ✕ đang vẽ (một nguồn hình học)', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('win', { score: 8, best: 8 })
+    expect(d.closeRect()).toEqual(boxOf(hitTargets(s)[0]!))
+  })
+
+  it('44×44 và nằm ở góc trên-phải của card, TRÊN các nút hành động', () => {
+    for (const kind of ['win', 'gameover'] as const) {
+      const s = makeScene()
+      const d = dialogs(s, layout320, [])
+      d.open(kind, { score: 8, best: 8 })
+      const c = d.closeRect()
+      expect(c.w).toBe(44)
+      expect(c.h).toBe(44)
+      for (const r of d.buttonRects()) expect(c.y + c.h, kind).toBeLessThanOrEqual(r.y)
+      // Mép phải ✕ cách mép phải card đúng lề 2 px.
+      const cardRight = layout320.width / 2 + dialogCardWidth(layout320.width) / 2
+      expect(c.x + c.w, kind).toBeCloseTo(cardRight - 2)
+    }
+  })
+
+  it('đi theo relayout', () => {
+    const s = makeScene()
+    const d = dialogs(s, layout320, [])
+    d.open('gameover', { score: 8, best: 8 })
+    const before = d.closeRect()
+    d.relayout(layoutDesktop)
+    expect(d.closeRect()).not.toEqual(before)
+    expect(d.closeRect().w).toBe(44)
   })
 })
 

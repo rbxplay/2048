@@ -25,6 +25,10 @@ export type OpenDialogOptions = {
   /** Nhãn các nút hành động, theo thứ tự hiện ra. */
   labels: string[]
   onActivate: (index: number) => void
+  /** Tên của nút ✕ (đã có sẵn trong i18n); nút không có chữ nhìn thấy. */
+  closeLabel: string
+  /** Kích hoạt nút ✕ — cùng action với nút ✕ trên canvas. */
+  onClose: () => void
   /**
    * Phần tử đã mở dialog. §B8: "focus restored to the invoking element on
    * close". Bỏ trống thì lấy `document.activeElement` lúc mở — đúng phần tử đã
@@ -76,6 +80,8 @@ export type A11yPlacement = {
   settingsClose: A11yRect
   /** Theo thứ tự nút của dialog đang mở; rỗng khi không có dialog. */
   dialogButtons: readonly A11yRect[]
+  /** Hộp của nút ✕ trong dialog; `null` khi không có dialog mở. */
+  dialogClose: A11yRect | null
 }
 
 export type MountControlsOptions = {
@@ -270,6 +276,8 @@ export function createA11yBridge(): A11yBridge {
   let dialogEl: HTMLElement | null = null
   /** Nút của dialog đang mở, theo thứ tự hiện ra — đích của `placeControls`. */
   let dialogButtons: HTMLButtonElement[] = []
+  /** Nút ✕ của dialog đang mở; `null` khi không có dialog. */
+  let dialogClose: HTMLButtonElement | null = null
   /** Bảng Settings của canvas đang mở — do tầng ghép nối báo, không tự suy. */
   let settingsOpen = false
   let restoreFocusTo: HTMLElement | null = null
@@ -400,6 +408,17 @@ export function createA11yBridge(): A11yBridge {
     heading.textContent = opts.heading
     dialog.appendChild(heading)
 
+    // ✕ đứng ĐẦU thứ tự Tab: nó vẽ ở góc trên card, TRÊN các nút hành động, và
+    // thứ tự Tab phải khớp thứ tự nhìn từ trên xuống. Nó vẫn không nhận focus lúc
+    // mở — focus đầu vào nút hành động đầu, bên dưới.
+    const close = document.createElement('button')
+    close.type = 'button'
+    close.className = `a11y-dialog-close ${CTL_CLASS}`
+    close.textContent = opts.closeLabel
+    close.addEventListener('click', () => opts.onClose())
+    dialog.appendChild(close)
+    dialogClose = close
+
     dialogButtons = opts.labels.map((label, index) => {
       const button = document.createElement('button')
       button.type = 'button'
@@ -416,8 +435,9 @@ export function createA11yBridge(): A11yBridge {
     restoreFocusTo = invokedFrom
     syncInert()
 
-    const first = dialog.querySelector('button')
-    if (first !== null) first.focus()
+    // Nút hành động đầu, KHÔNG phải ✕ (nút đầu theo thứ tự Tab). Dialog không có
+    // nút hành động nào thì ✕ là lối ra duy nhất nên nhận focus.
+    ;(dialogButtons[0] ?? close).focus()
   }
 
   /**
@@ -430,6 +450,7 @@ export function createA11yBridge(): A11yBridge {
     if (dialog === null) return
     dialogEl = null
     dialogButtons = []
+    dialogClose = null
     const back = restoreFocusTo
     restoreFocusTo = null
 
@@ -672,6 +693,7 @@ export function createA11yBridge(): A11yBridge {
     // KHÔNG để nó nằm lại ở hộp của lần đặt trước — ring vẽ sai chỗ còn tệ hơn
     // là không có chỗ.
     dialogButtons.forEach((button, i) => place(button, placement.dialogButtons[i] ?? null))
+    if (dialogClose !== null) place(dialogClose, placement.dialogClose)
   }
 
   /**
@@ -709,6 +731,7 @@ export function createA11yBridge(): A11yBridge {
     pending = null
     dialogEl = null
     dialogButtons = []
+    dialogClose = null
     settingsOpen = false
     restoreFocusTo = null
     controls = null

@@ -264,7 +264,7 @@ async function boot(): Promise<void> {
         },
         dpad: dpad.buttonRects(),
         gear: hud.gearRect(),
-        dialog: { phase: dialogs.phase, buttons: dialogs.buttonRects() },
+        dialog: { phase: dialogs.phase, buttons: dialogs.buttonRects(), close: dialogs.closeRect() },
         settings: { phase: settings.phase, controls: settings.controlRects() },
       }),
     )
