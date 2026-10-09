@@ -573,26 +573,13 @@ describe('nút ✕ của dialog — bản DOM của nút đóng trên canvas', (
     expect(document.activeElement).not.toBe(xButton())
   })
 
-  /** Bắn `Tab` từ phần tử đang có focus, đúng như trình duyệt sẽ làm. */
-  function tab(): KeyboardEvent {
-    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
-    ;(document.activeElement as HTMLElement).dispatchEvent(ev)
-    return ev
-  }
-
-  it('Tab đi một vòng qua mọi nút của dialog rồi quay về chỗ cũ', () => {
+  it('thứ tự DOM của nút trong dialog là ✕ rồi các nút hành động theo đúng thứ tự nhãn', () => {
     open([en.keepPlaying, en.newGame])
-    const all = [xButton(), ...dialogButtons()]
-    all[0]!.focus()
-    const visited: Element[] = []
-    for (let i = 0; i < all.length; i++) {
-      visited.push(document.activeElement!)
-      const ev = tab()
-      // Nút giữa nhường cho trình trình duyệt; ở đây jsdom không tự dời focus.
-      if (!ev.defaultPrevented) all[i + 1]?.focus()
-    }
-    expect(visited).toEqual(all)
-    expect(document.activeElement).toBe(all[0])
+    // Trình duyệt dời focus theo thứ tự DOM; hai test Tab / Shift+Tab ở trên đã
+    // phủ phần quay vòng ở hai đầu, nên ở đây chỉ cần ghim chính thứ tự đó.
+    const inDom = [...xButton().closest('[role="dialog"]')!.querySelectorAll('button')]
+    expect(inDom).toEqual([xButton(), ...dialogButtons()])
+    expect(dialogButtons().map((b) => b.textContent)).toEqual([en.keepPlaying, en.newGame])
   })
 
   it('kích hoạt (click) gọi onClose đúng một lần và KHÔNG gọi onActivate', () => {
