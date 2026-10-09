@@ -104,6 +104,16 @@ export class BoardScene extends Phaser.Scene {
     this.#layout = computeLayout(DEFAULT_W, DEFAULT_H)
   }
 
+  /**
+   * Phaser gọi `init(data)` TRƯỚC `create()` với dữ liệu truyền cho
+   * `scene.start('Board', data)`. Theme đã lưu phải vào đây: `create()` vẽ nền
+   * camera, mặt board và tile ngay lần đầu, nên nhận theme muộn hơn là vẽ lần
+   * đầu bằng theme sáng mặc định — save có `theme: 'contrast'` mở lên lại sáng.
+   */
+  init(data?: { theme?: PhaserTheme }): void {
+    if (data?.theme !== undefined) this.#theme = data.theme
+  }
+
   create(): void {
     this.#boardLayer = this.add.container(0, 0)
     this.#ready = true

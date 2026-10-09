@@ -100,11 +100,13 @@ function chain(): Record<string, unknown> {
   return self
 }
 
-async function makeBoardScene() {
+async function makeBoardScene(opts: { initData?: unknown } = {}) {
   const { BoardScene } = await import('./scenes/Board')
   const tweens: FakeTw[] = []
   const handlers: Record<string, () => void> = {}
+  const backgrounds: unknown[] = []
   const scene = new BoardScene() as unknown as Record<string, unknown> & {
+    init(data?: unknown): void
     create(): void
     renderBoard(b: unknown): void
     playOutcome(o: unknown): void
@@ -117,7 +119,7 @@ async function makeBoardScene() {
       text: go,
       graphics: go,
     },
-    cameras: { main: { setBackgroundColor: () => undefined } },
+    cameras: { main: { setBackgroundColor: (c: unknown) => backgrounds.push(c) } },
     scale: {
       width: 360,
       height: 640,
@@ -148,8 +150,10 @@ async function makeBoardScene() {
       },
     },
   })
+  // Đúng thứ tự vòng đời của Phaser: `init(data)` rồi mới `create()`.
+  scene.init(opts.initData)
   scene.create()
-  return { scene, tweens, handlers }
+  return { scene, tweens, handlers, backgrounds }
 }
 
 const boardOf = (id: number) =>
@@ -195,5 +199,22 @@ describe('BoardScene — chỉ huỷ tween CỦA MÌNH (D1)', () => {
     expect(own.length).toBeGreaterThan(0)
     scene.renderBoard(boardOf(1))
     expect(tweens.every((t) => t.stopped)).toBe(true)
+  })
+})
+
+describe('BoardScene — theme lúc khởi động', () => {
+  it('nhận theme qua dữ liệu khởi động nên `create()` vẽ ngay bằng theme đã lưu', async () => {
+    const { buildTheme } = await import('./theme')
+    const contrast = buildTheme('contrast')
+    const { backgrounds } = await makeBoardScene({ initData: { theme: contrast } })
+    expect(backgrounds.length).toBeGreaterThan(0)
+    for (const c of backgrounds) expect(c).toBe(contrast.page)
+    expect(contrast.page).not.toBe(buildTheme('light').page)
+  })
+
+  it('không có dữ liệu khởi động thì giữ theme sáng mặc định', async () => {
+    const { buildTheme } = await import('./theme')
+    const { backgrounds } = await makeBoardScene()
+    expect(backgrounds.at(-1)).toBe(buildTheme('light').page)
   })
 })

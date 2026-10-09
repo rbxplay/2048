@@ -569,7 +569,8 @@ async function boot(): Promise<void> {
     // trong `start` khi scene không có `preload`), nên listener phải đăng ký
     // trước — đọc `scene.add` ngay sau `start` là chưa có gì để đọc.
     sc.events.once('create', () => startScene(sc))
-    game.scene.start('Board')
+    // Theme đi cùng lời gọi `start` để `create()` vẽ lần đầu bằng đúng theme đã lưu.
+    game.scene.start('Board', { theme })
   })
 
   // ---------- vòng đời nền tảng ----------
