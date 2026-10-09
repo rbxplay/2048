@@ -18,13 +18,6 @@ export const DEV_MOCK_MARKER = 'SPAWNED_BY_DEV_MOCK_ONLY'
  * LƯU TRỮ NẰM TRONG BỘ NHỚ, không dùng bộ nhớ trình duyệt. Reload khi chạy
  * local sẽ mất tiến độ — đúng như một phiên không có SDK, và đổi lại module
  * này không bao giờ chạm vào thứ certification cấm.
- *
- * Điều khiển từ DevTools qua `window.__mock`:
- *   __mock.pause()            giả lập nền tảng tạm dừng
- *   __mock.resume()           giả lập nền tảng cho chạy lại
- *   __mock.saved()            xem dữ liệu sẽ được lưu
- *   __mock.emitAudioChange(false)   giả lập YouTube mute
- *   __mock.lang = 'en'        thử locale khác
  */
 export class MockPlatform implements GamePlatform {
   readonly name = 'mock' as const
@@ -118,9 +111,4 @@ export class MockPlatform implements GamePlatform {
     this.#audioEnabled = enabled
     for (const cb of this.#audioCbs) cb(enabled)
   }
-}
-
-/** Bơm ra window để test thủ công từ DevTools. */
-export function installMockOnWindow(platform: MockPlatform): void {
-  ;(window as unknown as { __mock: MockPlatform }).__mock = platform
 }

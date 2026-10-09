@@ -1,12 +1,15 @@
 import { defineConfig } from 'vitest/config'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // A2 #9: bundle chỉ dùng đường dẫn tương đối.
   base: './',
   // Cổng 8080 khớp sample chính thức của Google, để SDK Test Suite trỏ vào được.
   server: { port: 8080, strictPort: true },
   build: {
+    // Bản thử nghiệm cho GitHub Pages (mock adapter) ra thư mục riêng, không bao
+    // giờ đè lên `dist/` — thứ duy nhất được nộp cert và được hai script kiểm quét.
+    outDir: mode === 'pages' ? 'dist-pages' : 'dist',
     target: 'es2022',
     assetsInlineLimit: 100_000_000,
     cssCodeSplit: false,
@@ -17,4 +20,4 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
   },
-})
+}))

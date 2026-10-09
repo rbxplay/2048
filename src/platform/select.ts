@@ -33,10 +33,17 @@ export function choosePlatformKind(opts: { inPlayables: boolean; isDev: boolean 
  * nhưng Rollup chỉ thấy một lời gọi hàm, không gói được thành hằng số, nên nhánh
  * sống sót và `mock.ts` lọt vào bundle production — đúng lỗi §5a mà
  * `check-bundle.mjs` bắt được (sentinel `SPAWNED_BY_DEV_MOCK_ONLY`).
+ *
+ * `MODE === 'pages'` là bản build cho người dùng thử trên GitHub Pages (`npm run
+ * build:pages`, ra `dist-pages/`). Bundle nộp cert không dùng được ở đó: ngoài
+ * YouTube SDK là no-op và nó gọi ngay callback `onAudioEnabledChange(false)`,
+ * nên game câm; ngôn ngữ cũng luôn là `en`. Mock thì bật tiếng và lấy ngôn ngữ
+ * của trình duyệt. Vite cũng thay `import.meta.env.MODE` bằng literal, nên ở
+ * bản build nộp cert (`MODE` = `'production'`) cả điều kiện vẫn gập về `false`.
  */
 export async function selectPlatform(): Promise<GamePlatform> {
   try {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV || import.meta.env.MODE === 'pages') {
       const kind = choosePlatformKind({ inPlayables: isPlayablesEnv(), isDev: true })
       if (kind === 'mock') {
         const { MockPlatform } = await import('./mock')

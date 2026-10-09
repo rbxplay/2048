@@ -1,0 +1,49 @@
+# Đưa game lên GitHub Pages cho người dùng THỬ — không phải bản nộp YouTube Playables.
+#
+# Trang phục vụ bản `npm run build:pages` (mock adapter): bundle nộp cert chạy
+# ngoài YouTube thì câm, vì SDK no-op báo tắt tiếng ngay lúc đăng ký callback.
+# Tiến độ nằm trong bộ nhớ, tải lại trang là mất.
+#
+# Cần bật một lần: Settings → Pages → Build and deployment → Source = GitHub Actions.
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Không huỷ lượt deploy đang chạy; các lượt xếp hàng ở giữa bị bỏ qua.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:pages
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

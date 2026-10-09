@@ -3,6 +3,7 @@ node_modules/
 
 # Build output — bundle được tạo ra, không commit
 dist/
+dist-pages/
 dist-ssr/
 
 # Cache
