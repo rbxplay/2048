@@ -894,11 +894,20 @@ zoom 200 % và target ≥ 44 px đều đạt mà không phải tự dựng lạ
 > 7. Nút hành động của dialog vẽ từ trên xuống theo ĐÚNG thứ tự `buttonLabels` ("Chơi tiếp" trên,
 >    "Ván mới" dưới) — trước đó vẽ ngược, nên Tab đi từ dưới lên. Nút nhận focus khi dialog mở vẫn
 >    là "Chơi tiếp"; hành động phá huỷ không thành mặc định.
-> 8. Không đổi: bẫy focus và trả focus của dialog, `inert` cho nền, `Esc` không `preventDefault()`,
+> 8. **Nút ✕ của dialog có bản DOM** (`.a11y-dialog-close`, trong `role="dialog"`, nên nằm trong bẫy
+>    focus và không `inert`). Nó CHỈ tồn tại khi dialog mở; hộp lấy từ `Dialogs.closeRect()` (ô chạm
+>    44×44 của canvas — một nguồn hình học, qua `placementFor` → `fitRing`). Tên là chuỗi i18n `close`
+>    ("Đóng" / "Close"), không chữ nhìn thấy. Kích hoạt phát action `'close'` — đúng action của ✕ canvas,
+>    qua cùng `applyAction` và cổng chặn `'open'` / pause: ván thắng → `keep-playing`, ván thua →
+>    `retry` (ván mới + tối đa một interstitial cho mỗi lần thua). Thứ tự Tab: ✕ ĐỨNG ĐẦU (✕ vẽ ở góc
+>    trên card, trên các nút hành động — khớp thứ tự từ trên xuống), rồi các nút hành động. Focus lúc
+>    mở vẫn vào nút hành động đầu ("Chơi tiếp" / "Chơi lại"), không phải ✕; Tab / Shift+Tab vòng qua
+>    cả ✕.
+> 9. Không đổi: bẫy focus và trả focus của dialog, `inert` cho nền, `Esc` không `preventDefault()`,
 >    guard bàn phím cho ô nhập DOM, hai vùng live, vòng đời ba trạng thái của overlay.
 >
 > Dòng "Focus ring" và "Zoom 200 % … DOM a11y không bị cắt" ở §12.3 đọc theo quy tắc này. Giới hạn
-> đã biết: nút ✕ của dialog chỉ có trên canvas (bàn phím dùng `Esc`); khi
+> đã biết: khi
 > D-pad canvas tự ẩn (`dpad: 'auto'` sau cú vuốt, hoặc `'off'`) bốn nút DOM vẫn ở chỗ D-pad, nên
 > ring ôm một ô trống. Số đo trên trình duyệt thật: `docs/verification-report.md` mục 7.
 
